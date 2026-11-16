@@ -1,0 +1,334 @@
+/* Starbound-style pixel theme. Palette sampled from the game's UI; all artwork is drawn with CSS. */
+:root {
+  --win-head: rgba(47, 47, 47, 0.95);
+  --win-body: rgba(20, 20, 20, 0.93);
+  --win-edge: #626262;
+  --inset: rgba(13, 13, 13, 0.78);
+  --inset-line: rgba(255, 255, 255, 0.13);
+  --inset-line-hi: rgba(255, 255, 255, 0.47);
+  --text: #ffffff;
+  --muted: #a2a2a2;
+  --dim: #6d6d6d;
+  --gold: #ffcf2a;
+  --good: #6be24a;
+  --warn: #ff9b2a;
+  --bad: #ff4848;
+  --blue: #66c8ff;
+
+  /* button bevels (button.png / buttonhover.png / buttonactive.png / buttonred.png) */
+  --btn-hi: #939395;
+  --btn-mid: #515457;
+  --btn-fill: #262626;
+  --btn-lo: #272a2b;
+  --btn-h-hi: #c1c1c5;
+  --btn-h-mid: #939395;
+  --btn-h-fill: #515457;
+  --btn-gold-hi: #c1a100;
+  --btn-gold-mid: #a08500;
+  --btn-gold-fill: #705d00;
+  --btn-gold-lo: #493d00;
+  --btn-red-hi: #af7a7a;
+  --btn-red-mid: #694040;
+  --btn-red-fill: #2f1d1d;
+  --btn-red-lo: #331f1f;
+
+  --fs: 16px;
+  --fs-title: 16px;
+  --font: "Pixelify Sans", monospace;
+  color-scheme: dark;
+  font-family: var(--font);
+  font-size: var(--fs);
+  line-height: 1.25;
+  color: var(--text);
+  background: #06071a;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  image-rendering: pixelated;
+}
+:root.game-font {
+  --font: "Hobo", "Pixelify Sans", monospace;
+}
+
+* {
+  box-sizing: border-box;
+  border-radius: 0 !important;
+}
+body {
+  margin: 0;
+  overflow: hidden;
+}
+#sky {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  image-rendering: pixelated;
+  z-index: -1;
+}
+code,
+pre {
+  font-family: var(--font);
+}
+code {
+  color: var(--gold);
+}
+::selection {
+  background: var(--btn-gold-mid);
+  color: #fff;
+}
+
+/* ── text fields: black boxes with a grey pixel frame ── */
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.75);
+  border: 2px solid #000;
+  box-shadow: inset 0 0 0 2px #3a3a3a;
+  padding: 6px 8px;
+  caret-color: var(--gold);
+  outline: none;
+}
+input:hover,
+select:hover,
+textarea:hover {
+  box-shadow: inset 0 0 0 2px #515457;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  box-shadow: inset 0 0 0 2px var(--btn-hi);
+}
+textarea::placeholder,
+input::placeholder {
+  color: var(--dim);
+}
+select {
+  appearance: none;
+  padding-right: 26px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' shape-rendering='crispEdges'%3E%3Cpath fill='%23c1c1c5' d='M0 0h10v2H0zM2 2h6v2H2zM4 4h2v2H4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+option {
+  background: #141414;
+}
+
+/* ── checkboxes: black square, grey ring, red pixel tick ── */
+input[type="checkbox"] {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  flex: none;
+  background: #000;
+  border: none;
+  box-shadow:
+    inset 0 0 0 2px #000,
+    inset 0 0 0 4px #8a8a8a,
+    inset 0 0 0 6px #000;
+  cursor: pointer;
+  vertical-align: middle;
+}
+input[type="checkbox"]:hover {
+  box-shadow:
+    inset 0 0 0 2px #000,
+    inset 0 0 0 4px #c1c1c5,
+    inset 0 0 0 6px #000;
+}
+input[type="checkbox"]:checked {
+  background: #000
+    url("data:image/svg+xml,%3Csvg xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27 width%3D%2711%27 height%3D%2711%27 shape-rendering%3D%27crispEdges%27%3E%3Cpath fill%3D%27%23000%27 d%3D%27M8 0h1v1h-1zM8 1h1v1h-1zM9 0h1v1h-1zM10 0h1v1h-1zM10 2h1v1h-1zM7 1h1v1h-1zM7 2h1v1h-1zM9 3h1v1h-1zM10 3h1v1h-1zM6 2h1v1h-1zM6 3h1v1h-1zM8 4h1v1h-1zM9 4h1v1h-1zM0 3h1v1h-1zM0 4h1v1h-1zM0 5h1v1h-1zM1 3h1v1h-1zM1 5h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM3 4h1v1h-1zM5 3h1v1h-1zM5 4h1v1h-1zM7 5h1v1h-1zM8 5h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM4 4h1v1h-1zM4 5h1v1h-1zM6 6h1v1h-1zM7 6h1v1h-1zM2 7h1v1h-1zM3 7h1v1h-1zM5 7h1v1h-1zM6 7h1v1h-1zM3 8h1v1h-1zM4 8h1v1h-1zM5 8h1v1h-1z%27%2F%3E%3Cpath fill%3D%27%23ff2020%27 d%3D%27M9 1h1v1h-1zM10 1h1v1h-1zM8 2h1v1h-1zM9 2h1v1h-1zM7 3h1v1h-1zM8 3h1v1h-1zM1 4h1v1h-1zM2 4h1v1h-1zM6 4h1v1h-1zM7 4h1v1h-1zM2 5h1v1h-1zM3 5h1v1h-1zM5 5h1v1h-1zM6 5h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM4 7h1v1h-1z%27%2F%3E%3C%2Fsvg%3E")
+    center / 22px 22px no-repeat;
+}
+
+/* ── buttons: black outline, 3-step bevel ── */
+button {
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  border: 2px solid #000;
+  padding: 5px 12px 6px;
+  background: var(--btn-fill);
+  box-shadow:
+    inset 0 2px 0 var(--btn-hi),
+    inset 0 4px 0 var(--btn-mid),
+    inset 0 -2px 0 var(--btn-lo),
+    inset 4px 0 0 var(--btn-mid),
+    inset -4px 0 0 var(--btn-mid);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6);
+}
+button:hover:not(:disabled) {
+  background: var(--btn-h-fill);
+  box-shadow:
+    inset 0 2px 0 var(--btn-h-hi),
+    inset 0 4px 0 var(--btn-h-mid),
+    inset 0 -2px 0 var(--btn-h-fill),
+    inset 4px 0 0 var(--btn-h-mid),
+    inset -4px 0 0 var(--btn-h-mid);
+}
+button:active:not(:disabled) {
+  transform: translateY(2px);
+}
+button:disabled {
+  cursor: default;
+  color: var(--dim);
+  text-shadow: none;
+  background: #1c1c1c;
+  box-shadow:
+    inset 0 2px 0 #3c3c3c,
+    inset 0 -2px 0 #1a1a1a,
+    inset 4px 0 0 #2e2e2e,
+    inset -4px 0 0 #2e2e2e;
+}
+button.gold:disabled,
+button.red:disabled {
+  color: var(--dim);
+  background: #1c1c1c;
+  box-shadow:
+    inset 0 2px 0 #3c3c3c,
+    inset 0 -2px 0 #1a1a1a,
+    inset 4px 0 0 #2e2e2e,
+    inset -4px 0 0 #2e2e2e;
+}
+button.gold:not(:disabled) {
+  background: var(--btn-gold-fill);
+  box-shadow:
+    inset 0 2px 0 var(--btn-gold-hi),
+    inset 0 4px 0 var(--btn-gold-mid),
+    inset 0 -2px 0 var(--btn-gold-lo),
+    inset 4px 0 0 var(--btn-gold-mid),
+    inset -4px 0 0 var(--btn-gold-mid);
+}
+button.gold:hover:not(:disabled) {
+  background: var(--btn-gold-mid);
+  box-shadow:
+    inset 0 2px 0 #e8c400,
+    inset 0 4px 0 var(--btn-gold-hi),
+    inset 0 -2px 0 var(--btn-gold-fill),
+    inset 4px 0 0 var(--btn-gold-hi),
+    inset -4px 0 0 var(--btn-gold-hi);
+}
+button.red:not(:disabled) {
+  background: var(--btn-red-fill);
+  box-shadow:
+    inset 0 2px 0 var(--btn-red-hi),
+    inset 0 4px 0 var(--btn-red-mid),
+    inset 0 -2px 0 var(--btn-red-lo),
+    inset 4px 0 0 var(--btn-red-mid),
+    inset -4px 0 0 var(--btn-red-mid);
+}
+button.small {
+  padding: 2px 8px 3px;
+}
+button.flat {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  text-shadow: none;
+}
+button.flat:hover:not(:disabled) {
+  background: none;
+  box-shadow: none;
+  color: var(--gold);
+}
+button.link {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  text-shadow: none;
+  color: var(--blue);
+  text-align: left;
+  white-space: normal;
+  justify-content: flex-start;
+}
+button.link:hover:not(:disabled) {
+  background: none;
+  box-shadow: none;
+  color: var(--gold);
+}
+
+/* ── inset panels (like crafting list backgrounds) ── */
+.panel {
+  background: var(--inset);
+  border: 2px solid var(--inset-line);
+  padding: 10px;
+}
+.label {
+  color: var(--gold);
+}
+.muted {
+  color: var(--muted);
+}
+
+/* ── status text tags ── */
+.status {
+  flex: none;
+  display: inline-block;
+  min-width: 84px;
+  text-align: center;
+  padding: 1px 6px 2px;
+  border: 2px solid #000;
+  background: #262626;
+  box-shadow: inset 0 2px 0 #3c3c3c;
+  color: var(--muted);
+  text-shadow: 2px 2px 0 #000;
+}
+.status.done {
+  color: var(--good);
+}
+.status.no_match {
+  color: var(--warn);
+}
+.status.failed {
+  color: var(--bad);
+}
+.status.transcribing {
+  color: var(--gold);
+}
+.status.searching,
+.status.downloading,
+.status.converting {
+  color: var(--blue);
+}
+.status.spin {
+  animation: blink 1s steps(2, jump-none) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ── pixel scrollbars ── */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+::-webkit-scrollbar-track {
+  background: #0d0d0d;
+  border-left: 2px solid #000;
+  box-shadow: inset 2px 0 0 #262626;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--btn-mid);
+  border: 2px solid #000;
+  box-shadow:
+    inset 0 2px 0 var(--btn-hi),
+    inset 0 -2px 0 var(--btn-lo);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--btn-hi);
+}
+::-webkit-scrollbar-corner {
+  background: #0d0d0d;
+}
