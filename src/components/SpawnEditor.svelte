@@ -262,10 +262,6 @@
     opacity: 0.4;
   }
   .chip input,
-  .biome input {
-    width: 18px;
-    height: 18px;
-  }
   .biomes {
     margin-top: 10px;
     display: flex;

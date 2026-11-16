@@ -378,10 +378,6 @@
     color: var(--text);
     background: #2c2600;
   }
-  .chip input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-  }
   .acts {
     white-space: nowrap;
   }

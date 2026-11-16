@@ -192,10 +192,6 @@
     font-size: 14px;
     color: var(--muted);
   }
-  .toggles input {
-    width: 18px;
-    height: 18px;
-  }
   .spacer {
     flex: 1;
   }
