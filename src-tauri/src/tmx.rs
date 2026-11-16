@@ -402,6 +402,15 @@ fn tileset_rank(p: &str) -> (u8, String) {
     (r, p.to_string())
 }
 
+/// Whole numbers as JSON integers (like Tiled / vanilla files), others as floats.
+fn jnum(v: f64) -> Value {
+    if v.fract() == 0.0 && v.abs() < 1e15 {
+        json!(v as i64)
+    } else {
+        json!(v)
+    }
+}
+
 fn stringify_props(m: &Map<String, Value>) -> Value {
     Value::Object(
         m.iter()
@@ -471,7 +480,7 @@ pub fn export(doc: &Doc, tilecount: &dyn Fn(&str) -> Option<u32>, rel_root: &str
             "data": l.data.iter().map(|&i| gid(i)).collect::<Vec<_>>(),
             "height": doc.height,
             "name": l.name,
-            "opacity": l.opacity,
+            "opacity": jnum(l.opacity),
             "type": "tilelayer",
             "visible": l.visible,
             "width": doc.width,
@@ -489,16 +498,16 @@ pub fn export(doc: &Doc, tilecount: &dyn Fn(&str) -> Option<u32>, rel_root: &str
             .iter()
             .map(|o| {
                 let mut v = json!({
-                    "height": o.height,
+                    "height": jnum(o.height),
                     "id": o.id,
                     "name": o.name,
                     "properties": stringify_props(&o.properties),
                     "rotation": 0,
                     "type": o.kind,
                     "visible": o.visible,
-                    "width": o.width,
-                    "x": o.x,
-                    "y": o.y
+                    "width": jnum(o.width),
+                    "x": jnum(o.x),
+                    "y": jnum(o.y)
                 });
                 if let Some(t) = o.tile {
                     let g = gid(t);
@@ -507,7 +516,7 @@ pub fn export(doc: &Doc, tilecount: &dyn Fn(&str) -> Option<u32>, rel_root: &str
                     }
                 }
                 if let Some(pl) = &o.polyline {
-                    v["polyline"] = Value::Array(pl.iter().map(|p| json!({"x": p[0], "y": p[1]})).collect());
+                    v["polyline"] = Value::Array(pl.iter().map(|p| json!({"x": jnum(p[0]), "y": jnum(p[1])})).collect());
                 }
                 v
             })

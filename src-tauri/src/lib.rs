@@ -150,6 +150,17 @@ fn status(st: State) -> Status {
     }
 }
 
+/// A project/dungeon path passed on the command line (`sme path/to/mod`).
+#[tauri::command]
+fn startup_path() -> Option<String> {
+    std::env::args().skip(1).find(|a| !a.starts_with('-') && Path::new(a).exists())
+}
+
+#[tauri::command]
+fn selftest_mode() -> bool {
+    std::env::args().any(|a| a == "--selftest")
+}
+
 #[tauri::command]
 fn get_settings(st: State) -> Settings {
     st.settings.lock().unwrap().clone()
@@ -437,6 +448,8 @@ pub fn run() {
         .register_uri_scheme_protocol("sme", |ctx, req| serve(ctx.app_handle(), &req.uri().to_string()))
         .invoke_handler(tauri::generate_handler![
             status,
+            startup_path,
+            selftest_mode,
             get_settings,
             set_settings,
             catalog,
