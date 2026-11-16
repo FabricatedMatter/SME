@@ -28,6 +28,10 @@
     void game.load().then(async () => {
       const p = await api.startupPath();
       if (p) await editor.openPath(p);
+      const sv = await api.startupView();
+      if (sv === "spawn" || sv === "mod") editor.view = { kind: sv };
+      else if (sv === "loot" && editor.poolPaths[0]) editor.view = { kind: "loot", path: editor.poolPaths[0] };
+      else if (sv === "dungeon" && editor.dungeonPaths[0]) editor.view = { kind: "dungeon", path: editor.dungeonPaths[0] };
       if (p && (await api.selftestMode())) await (await import("./lib/selftest")).selftest();
     });
     const key = (e: KeyboardEvent) => {

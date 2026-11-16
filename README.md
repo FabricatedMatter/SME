@@ -3,7 +3,49 @@
 A dedicated editor for Starbound (micro)dungeons, built to replace the generic
 [Tiled](https://www.mapeditor.org/) workflow. Desktop app: Rust ([Tauri 2](https://tauri.app)) backend, Svelte 5 UI.
 
-> Work in progress.
+## Features
+
+- **Projects are plain mod folders.** Open an existing mod (including old Tiled-made ones), a
+  single `.dungeon`, or a map; create a new mod with `_metadata` in one click. Saving writes
+  the same files the game and Tiled use, so nothing is locked into SME.
+- **Map editor with real game graphics.** Blocks are drawn with Starbound's own joint tiling
+  (render templates, edges, colour variants, hue shifts, background shadows and dimming),
+  objects use the game's sprites, and liquids, markers, spawn areas and wires are overlaid.
+  Paint, line, rectangle, fill, erase, pick, select/move, copy/cut/paste, undo/redo and a
+  game-like preview mode.
+- **Searchable palette.** Blocks, platforms, objects (filter by race, category, type or
+  colony tag), liquids, favourites and recently used.
+- **Markers with names.** Anchors ("needs solid ground", "needs air"…), connectors, biome
+  items/trees, surface blocks and invisible walls are labelled tools with explanations,
+  placed as overlays so they don't replace blocks.
+- **NPCs, monsters, stagehands and items** are drawn as spawn areas from a form.
+- **Dungeon editor.** Metadata, parts, anchor parts, chances, threat levels and part rules.
+- **Loot editor.** Treasure pools with level tiers, fill and weighted entries, rounds and an
+  item picker with icons; "open 12 chests" rolls the pool the way the game does. Chests get
+  a loot picker in the inspector.
+- **Spawn rules instead of hand-written patches.** Tick biomes (planet types or cave
+  layers), pick placement and rarity; SME writes the `.biome.patch` files. Microdungeons
+  need no Lua.
+- **Checks** for the mistakes that otherwise only show up in `starbound.log`: anchor order,
+  name clashes with vanilla, missing parts, unknown objects or pools, pool loops, wires
+  that miss object nodes, and patches that target nothing.
+- **Test in game:** link, copy or pack the mod into `Starbound/mods/`, then
+  `/admin` + `/placedungeon <name>` in chat. Export a `.pak` without the Windows tools.
+
+## Keyboard
+
+| Key | Action |
+|---|---|
+| B / L / R / G / E / I / V / N / W | paint, line, rectangle, fill, erase, pick, select, spawn area, wire |
+| Tab / X | cycle layer: front, back, objects |
+| F | flip object (or flip the selection) |
+| P | preview without overlays |
+| Ctrl+Z / Ctrl+Y | undo / redo |
+| Ctrl+C / Ctrl+X / Ctrl+V | copy / cut / paste the selection |
+| Del | delete selection |
+| Space-drag, middle or right drag | pan; mouse wheel zooms |
+| 0 | fit map |
+| Ctrl+S | save everything |
 
 ## Why not Tiled?
 
@@ -29,6 +71,10 @@ cd src-tauri && cargo test  # tests (the vanilla round-trip tests need Starbound
 ```
 
 Release build: `npx tauri build`.
+
+Command line: `sme <mod folder | .dungeon | map.json>` opens it directly;
+`sme --selftest <copy of a mod>` runs an end-to-end smoke test of the editor and writes
+`sme-selftest.json` into that folder.
 
 ## License
 

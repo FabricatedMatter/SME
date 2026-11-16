@@ -20,6 +20,7 @@ async function bigJson<T>(cmd: string): Promise<T> {
 
 export const api = {
   status: () => invoke<Status>("status"),
+  startupView: () => invoke<string | null>("startup_view"),
   selftestMode: () => invoke<boolean>("selftest_mode"),
   startupPath: () => invoke<string | null>("startup_path"),
   getSettings: () => invoke<Settings>("get_settings"),

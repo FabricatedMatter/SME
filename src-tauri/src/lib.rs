@@ -156,6 +156,12 @@ fn startup_path() -> Option<String> {
     std::env::args().skip(1).find(|a| !a.starts_with('-') && Path::new(a).exists())
 }
 
+/// `--view=spawn|mod|loot|dungeon` to open a page directly (handy for screenshots).
+#[tauri::command]
+fn startup_view() -> Option<String> {
+    std::env::args().find_map(|a| a.strip_prefix("--view=").map(String::from))
+}
+
 #[tauri::command]
 fn selftest_mode() -> bool {
     std::env::args().any(|a| a == "--selftest")
@@ -450,6 +456,7 @@ pub fn run() {
             status,
             startup_path,
             selftest_mode,
+            startup_view,
             get_settings,
             set_settings,
             catalog,
