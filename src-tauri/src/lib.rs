@@ -273,6 +273,114 @@ async fn create_project(st: State<'_>, spec: project::NewProject) -> Res<project
     open_project(st, root.to_string_lossy().into_owned()).await
 }
 
+#[derive(Serialize)]
+struct ProjectPreview {
+    root: String,
+    exists: bool,
+    title: String,
+    dungeons: usize,
+    /// a few representative maps (project-relative), anchor parts first
+    maps: Vec<String>,
+}
+
+/// Summary of a (not necessarily open) project folder for the welcome screen's cards.
+#[tauri::command]
+async fn project_preview(dir: String) -> Res<ProjectPreview> {
+    let root = PathBuf::from(&dir);
+    let folder = root.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| dir.clone());
+    let Ok(info) = project::scan(&root) else {
+        return Ok(ProjectPreview { root: dir, exists: false, title: folder, dungeons: 0, maps: vec![] });
+    };
+    let title = ["friendlyName", "name"]
+        .iter()
+        .find_map(|k| info.metadata.get(*k).and_then(Value::as_str).filter(|s| !s.is_empty()).map(String::from))
+        .unwrap_or(folder);
+    let join = |base: &str, f: &str| {
+        let mut parts: Vec<&str> = base.split('/').collect();
+        parts.pop();
+        for s in f.split('/') {
+            match s {
+                ".." => {
+                    parts.pop();
+                }
+                "" | "." => {}
+                s => parts.push(s),
+            }
+        }
+        parts.join("/")
+    };
+    let part_maps = |base: &str, parts: &[Value]| -> Vec<String> {
+        parts
+            .iter()
+            .filter_map(|p| p.get("def").and_then(|d| d.get(1)))
+            .flat_map(|f| match f {
+                Value::String(s) => vec![s.clone()],
+                Value::Array(a) => a.iter().filter_map(|x| x.as_str().map(String::from)).collect(),
+                _ => vec![],
+            })
+            .map(|f| join(base, &f))
+            .collect()
+    };
+    let mut maps = Vec::new();
+    let mut dungeons = 0;
+    for d in &info.dungeons {
+        dungeons += 1;
+        if let Some(parts) = d.json.get("parts").and_then(Value::as_array) {
+            maps.extend(part_maps(&d.path, parts).into_iter().take(2));
+        }
+    }
+    for p in info.patches.iter().filter(|p| p.path.ends_with(".dungeon.patch")) {
+        let ops: Vec<&Value> = p.json.as_array().map(|a| a.iter().flat_map(|o| o.as_array().map(|x| x.iter().collect()).unwrap_or_else(|| vec![o])).collect()).unwrap_or_default();
+        let parts: Vec<Value> = ops
+            .iter()
+            .filter(|o| o.get("op").and_then(Value::as_str) == Some("add") && o.get("path").and_then(Value::as_str).is_some_and(|s| s.starts_with("/parts/")))
+            .filter_map(|o| o.get("value").cloned())
+            .collect();
+        dungeons += parts.len();
+        maps.extend(part_maps(&p.path, &parts));
+    }
+    if maps.is_empty() {
+        maps = info.maps.clone();
+    }
+    maps.retain(|m| root.join(m).is_file());
+    maps.dedup();
+    maps.truncate(6);
+    Ok(ProjectPreview { root: dir, exists: true, title, dungeons, maps })
+}
+
+/// Reads a map from any project folder (used by the welcome screen previews).
+#[tauri::command]
+async fn read_map_in(st: State<'_>, root: String, path: String) -> Res<tmx::Imported> {
+    let f = project::safe_join(Path::new(&root), &path).map_err(err)?;
+    let v = sbjson::parse(&std::fs::read(&f).map_err(|e| format!("{path}: {e}"))?).map_err(err)?;
+    let counts = st.tilecounts()?;
+    tmx::import(&v, &|p| counts.get(p).copied()).map_err(|e| format!("{path}: {e}"))
+}
+
+#[tauri::command]
+fn forget_recent(st: State, dir: String) {
+    let mut s = st.settings.lock().unwrap();
+    s.recent.retain(|r| r != &dir);
+    let _ = store_settings(&s);
+}
+
+/// Unpacks a `.pak` (e.g. a Steam workshop `contents.pak`) into a new folder inside
+/// `parent` and opens it as a project. Returns the project info.
+#[tauri::command]
+async fn import_pak(st: State<'_>, pak: String, parent: String) -> Res<project::ProjectInfo> {
+    let p = pak::Pak::open(Path::new(&pak)).map_err(err)?;
+    let base = PathBuf::from(&parent);
+    let name = pak::suggested_dir_name(&p);
+    let mut dest = base.join(&name);
+    let mut i = 2;
+    while dest.exists() {
+        dest = base.join(format!("{name}_{i}"));
+        i += 1;
+    }
+    pak::unpack(&p, &dest).map_err(err)?;
+    open_project(st, dest.to_string_lossy().into_owned()).await
+}
+
 #[tauri::command]
 async fn read_map(st: State<'_>, path: String) -> Res<tmx::Imported> {
     let root = st.project()?;
@@ -469,6 +577,10 @@ pub fn run() {
             rescan_project,
             close_project,
             create_project,
+            import_pak,
+            project_preview,
+            read_map_in,
+            forget_recent,
             read_map,
             write_map,
             read_json,

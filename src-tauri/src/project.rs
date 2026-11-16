@@ -23,6 +23,8 @@ pub struct ProjectInfo {
     pub dungeons: Vec<FileEntry>,
     pub treasure: Vec<FileEntry>,
     pub patches: Vec<FileEntry>,
+    /// Every `.json` under `dungeons/` (candidate maps), so maps no dungeon lists still show up.
+    pub maps: Vec<String>,
     pub tilesets: Vec<String>,
     pub sme: Value,
     pub errors: Vec<String>,
@@ -80,6 +82,7 @@ pub fn scan(root: &Path) -> Result<ProjectInfo> {
         dungeons: vec![],
         treasure: vec![],
         patches: vec![],
+        maps: vec![],
         tilesets: vec![],
         sme: std::fs::read(root.join("sme.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null),
         errors,
@@ -113,6 +116,8 @@ pub fn scan(root: &Path) -> Result<ProjectInfo> {
             if let Some(json) = load(&mut info) {
                 info.patches.push(FileEntry { path: r, json });
             }
+        } else if r.starts_with("dungeons/") && r.ends_with(".json") {
+            info.maps.push(r);
         } else if r.starts_with("tilesets/") && r.ends_with(".json") {
             info.tilesets.push(r);
         }

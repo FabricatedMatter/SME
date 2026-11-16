@@ -36,6 +36,11 @@ export const api = {
   closeProject: () => invoke<void>("close_project"),
   createProject: (spec: { dir: string; name: string; friendly_name: string; author: string; description: string }) =>
     invoke<ProjectInfo>("create_project", { spec }),
+  importPak: (pak: string, parent: string) => invoke<ProjectInfo>("import_pak", { pak, parent }),
+  projectPreview: (dir: string) =>
+    invoke<{ root: string; exists: boolean; title: string; dungeons: number; maps: string[] }>("project_preview", { dir }),
+  readMapIn: (root: string, path: string) => invoke<Imported>("read_map_in", { root, path }),
+  forgetRecent: (dir: string) => invoke<void>("forget_recent", { dir }),
 
   readMap: (path: string) => invoke<Imported>("read_map", { path }),
   writeMap: (path: string, doc: Doc) => invoke<void>("write_map", { path, doc }),

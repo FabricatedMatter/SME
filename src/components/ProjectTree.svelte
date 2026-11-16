@@ -64,9 +64,32 @@
         </button>
       {/each}
     {/each}
-  {:else}
-    <p class="muted small pad">No dungeons yet.</p>
   {/each}
+  {#each editor.dungeonPatches as dp}
+    <div class="item static" title="{dp.path}: adds parts to the game's own “{dp.target}” dungeon with a JSON patch">
+      <PixelIcon name="map" scale={2} color="var(--muted)" /> {dp.target} <span class="muted small">(patched)</span>
+    </div>
+    {#each dp.parts as part}
+      {#each partFiles(part) as f}
+        {@const mp = joinRel(dp.path, f)}
+        <button class="item sub" class:on={isMap(mp)} onclick={() => editor.openMap(mp)} title={mp}>
+          <PixelIcon name="pencil" scale={2} color={dp.anchors.includes(part.name) ? "var(--gold)" : "var(--muted)"} />
+          {part.name}{editor.maps[mp]?.dirty ? " •" : ""}
+        </button>
+      {/each}
+    {/each}
+  {/each}
+  {#if !editor.dungeonPaths.length && !editor.dungeonPatches.length}
+    <p class="muted small pad">No dungeons yet.</p>
+  {/if}
+  {#if editor.unlistedMaps.length}
+    <div class="sect"><span class="label" title="Map files that no .dungeon or dungeon patch uses">Other maps</span></div>
+    {#each editor.unlistedMaps as mp}
+      <button class="item sub" class:on={isMap(mp)} onclick={() => editor.openMap(mp)} title={mp}>
+        <PixelIcon name="pencil" scale={2} color="var(--muted)" /> {mp.split("/").pop()}
+      </button>
+    {/each}
+  {/if}
 
   <div class="sect">
     <span class="label">Loot</span>
@@ -135,6 +158,15 @@
   .item.on {
     background: #3a3000;
     color: #fff;
+  }
+  .static {
+    align-items: center;
+    gap: 6px;
+    cursor: default;
+    color: var(--text);
+  }
+  .static:hover {
+    background: none !important;
   }
   .sub {
     padding-left: 22px;

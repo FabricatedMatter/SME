@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import Logo from "./Logo.svelte";
   import PixelIcon from "./PixelIcon.svelte";
 
   let {
@@ -28,7 +29,7 @@
 <!-- Starbound-style window: rounded header with icon/title/subtitle, dark body, footer, hard drop shadow. -->
 <section class="win" class:fill>
   <header class="win-head">
-    <div class="win-icon"><PixelIcon name={icon} scale={3} color={iconColor} /></div>
+    <div class="win-icon">{#if icon === "logo"}<Logo scale={2} />{:else}<PixelIcon name={icon} scale={3} color={iconColor} />{/if}</div>
     <div class="win-titles">
       <div class="win-title">{title}</div>
       {#if subtitle}<div class="win-sub">{subtitle}</div>{/if}

@@ -140,6 +140,7 @@ export interface ProjectInfo {
   dungeons: FileEntry[];
   treasure: FileEntry[];
   patches: FileEntry[];
+  maps: string[];
   tilesets: string[];
   sme: any;
   errors: string[];

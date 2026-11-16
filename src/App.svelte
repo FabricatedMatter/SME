@@ -13,6 +13,7 @@
   import { api } from "./lib/api";
   import { editor } from "./lib/editor.svelte";
   import { game } from "./lib/game.svelte";
+  import Logo from "./lib/Logo.svelte";
   import PixelIcon from "./lib/PixelIcon.svelte";
 
   let showSettings = $state(false);
@@ -56,7 +57,7 @@
 {:else}
   <div class="app">
     <header class="top">
-      <div class="brand"><PixelIcon name="map" scale={3} color="var(--gold)" /> SME</div>
+      <div class="brand"><Logo scale={2} /> SME</div>
       <div class="proj" title={editor.project.root}>{title}</div>
       <div class="actions">
         <button class="gold" disabled={!editor.dirty} title="Save all (Ctrl+S)" onclick={() => editor.saveAll()}><PixelIcon name="disk" scale={2} /> Save</button>

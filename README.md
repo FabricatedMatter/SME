@@ -7,7 +7,10 @@ A dedicated editor for Starbound (micro)dungeons, built to replace the generic
 
 - **Projects are plain mod folders.** Open an existing mod (including old Tiled-made ones), a
   single `.dungeon`, or a map; create a new mod with `_metadata` in one click. Saving writes
-  the same files the game and Tiled use, so nothing is locked into SME.
+  the same files the game and Tiled use, so nothing is locked into SME. **Import .pak**
+  unpacks a packed mod (e.g. a subscribed Steam workshop `contents.pak`) into an editable
+  folder, and mods that add parts to a vanilla dungeon with a `.dungeon.patch` show those
+  parts in the tree. Recent projects appear as cards with live previews of their maps.
 - **Map editor with real game graphics.** Blocks are drawn with Starbound's own joint tiling
   (render templates, edges, colour variants, hue shifts, background shadows and dimming),
   objects use the game's sprites, and liquids, markers, spawn areas and wires are overlaid.

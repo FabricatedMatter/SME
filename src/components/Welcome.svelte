@@ -7,6 +7,7 @@
   import PixelIcon from "../lib/PixelIcon.svelte";
   import Window from "../lib/Window.svelte";
   import Modal from "./Modal.svelte";
+  import RecentCard from "./RecentCard.svelte";
 
   let { onsettings }: { onsettings: () => void } = $props();
   let recent = $state<string[]>([]);
@@ -43,7 +44,7 @@
 </script>
 
 <div class="welcome">
-  <Window title="SME" subtitle="Starbound Microdungeon Editor" icon="map">
+  <Window title="SME" subtitle="Starbound Microdungeon Editor" icon="logo">
     <div class="body">
       {#if game.error}
         <div class="panel err">
@@ -59,16 +60,25 @@
         <button class="gold big" onclick={() => (showNew = true)}><PixelIcon name="plus" scale={3} /> New mod</button>
         <button class="big" onclick={() => editor.openFolder()}><PixelIcon name="folder" scale={3} /> Open mod folder</button>
         <button class="big" onclick={() => editor.openDungeonFile()}><PixelIcon name="file" scale={3} /> Open .dungeon / map</button>
+        <button class="big" onclick={() => editor.importPak()} title="Unpack a .pak, e.g. a subscribed Steam workshop mod, into a folder you can edit"><PixelIcon name="chest" scale={3} /> Import .pak</button>
       </div>
       {#if recent.length}
         <div class="label">Recent</div>
         <div class="recent">
-          {#each recent as r}
-            <button class="link" onclick={() => editor.openFolder(r)}>{r}</button>
+          {#each recent as r (r)}
+            <RecentCard
+              dir={r}
+              onopen={() => editor.openFolder(r)}
+              onforget={async () => {
+                await api.forgetRecent(r);
+                recent = recent.filter((x) => x !== r);
+              }}
+            />
           {/each}
         </div>
       {/if}
       <p class="muted small">
+        Mods from the Steam workshop come as a <code>contents.pak</code>: use <b>Import .pak</b> to unpack one into an editable folder.
         Opening an old mod made with Tiled works directly: SME reads the same <code>.dungeon</code> and map files and writes them back in
         the same format.
       </p>
@@ -99,7 +109,7 @@
 
 <style>
   .welcome {
-    width: min(760px, calc(100vw - 32px));
+    width: min(820px, calc(100vw - 32px));
     margin: 8vh auto;
   }
   .body {
@@ -119,9 +129,10 @@
     gap: 10px;
   }
   .recent {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 244px);
+    gap: 10px;
+    justify-content: start;
   }
   .err {
     display: flex;

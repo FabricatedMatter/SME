@@ -106,6 +106,31 @@ class Editor {
     return Object.keys(this.files).filter((p) => p.endsWith(".dungeon")).sort();
   }
 
+  /** Vanilla dungeons the mod extends with JSON patches (`<name>.dungeon.patch`), with the
+   *  parts those patches add. Older mods often add their maps to e.g. tundramicrodungeons. */
+  get dungeonPatches(): { path: string; target: string; parts: any[]; anchors: string[] }[] {
+    return (this.project?.patches ?? [])
+      .filter((f) => f.path.endsWith(".dungeon.patch"))
+      .map((f) => {
+        const ops: any[] = Array.isArray(f.json) ? f.json.flat() : [];
+        const adds = ops.filter((o) => o && o.op === "add" && o.value !== undefined);
+        return {
+          path: f.path,
+          target: f.path.split("/").pop()!.replace(/\.dungeon\.patch$/, ""),
+          parts: adds.filter((o) => /^\/parts\/(-|\d+)$/.test(o.path)).map((o) => o.value),
+          anchors: adds.filter((o) => /^\/metadata\/anchor\/(-|\d+)$/.test(o.path)).map((o) => o.value),
+        };
+      });
+  }
+
+  /** Map files under dungeons/ that neither a .dungeon nor a dungeon patch refers to. */
+  get unlistedMaps(): string[] {
+    const used = new Set<string>();
+    for (const d of this.dungeonPaths) for (const part of this.files[d]?.parts ?? []) for (const f of partFiles(part)) used.add(joinRel(d, f));
+    for (const dp of this.dungeonPatches) for (const part of dp.parts) for (const f of partFiles(part)) used.add(joinRel(dp.path, f));
+    return (this.project?.maps ?? []).filter((p) => !used.has(p) && !this.maps[p]?.dirty);
+  }
+
   get poolPaths(): string[] {
     return Object.keys(this.files).filter((p) => p.endsWith(".treasurepools")).sort();
   }
@@ -170,13 +195,40 @@ class Editor {
     if (!(await this.confirmDiscard())) return;
     const f = (await openDialog({
       title: "Open a .dungeon or Tiled map",
-      filters: [{ name: "Starbound dungeon", extensions: ["dungeon", "json"] }],
+      filters: [{ name: "Starbound dungeon, map or .pak", extensions: ["dungeon", "json", "pak"] }],
     })) as string | null;
     if (!f) return;
     await this.openPath(f);
   }
 
+  /** Unpacks a .pak (e.g. a Steam workshop contents.pak) into a new folder and opens it. */
+  async importPak(pak?: string) {
+    if (!(await this.confirmDiscard())) return;
+    const install = game.status?.install;
+    const workshop = install ? install.replace(/[/\\]common[/\\][^/\\]+[/\\]?$/, "/workshop/content/211820") : undefined;
+    const f =
+      pak ??
+      ((await openDialog({
+        title: "Choose a .pak to unpack (workshop mods are a contents.pak)",
+        defaultPath: workshop,
+        filters: [{ name: "Starbound pak", extensions: ["pak"] }],
+      })) as string | null);
+    if (!f) return;
+    const parent = (await openDialog({ directory: true, title: "Where should the unpacked mod folder go?" })) as string | null;
+    if (!parent) return;
+    try {
+      const info = await api.importPak(f, parent);
+      await game.load();
+      this.loadInfo(info);
+      this.view = { kind: "mod" };
+      this.toast(`Unpacked to ${info.root}`, "good");
+    } catch (e) {
+      this.toast(String(e), "error");
+    }
+  }
+
   async openPath(p: string) {
+    if (p.toLowerCase().endsWith(".pak")) return this.importPak(p);
     try {
       const info = await api.openProject(p);
       await game.load();
@@ -338,6 +390,7 @@ class Editor {
       // maps: open ones from memory, the rest from disk
       const mapPaths = new Set<string>();
       for (const d of this.dungeonPaths) for (const part of this.files[d]?.parts ?? []) for (const f of partFiles(part)) mapPaths.add(joinRel(d, f));
+      for (const dp of this.dungeonPatches) for (const part of dp.parts) for (const f of partFiles(part)) mapPaths.add(joinRel(dp.path, f));
       const maps = [];
       for (const p of mapPaths) {
         if (this.maps[p]) maps.push({ path: p, doc: this.maps[p].doc });

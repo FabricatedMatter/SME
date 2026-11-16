@@ -255,6 +255,48 @@ pub fn pack_dir(dir: &Path, out_path: &Path, skip: &[&str]) -> Result<usize> {
     Ok(n)
 }
 
+/// A folder name for unpacking a pak: its metadata `name`, else `friendlyName`, else the
+/// file name (or, for a Steam workshop `contents.pak`, the workshop id folder).
+pub fn suggested_dir_name(pak: &Pak) -> String {
+    let from_meta = ["name", "friendlyName"].iter().find_map(|k| pak.metadata.get(*k).and_then(Value::as_str).map(String::from));
+    let stem = pak.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let raw = from_meta.unwrap_or_else(|| {
+        if stem == "contents" {
+            pak.path.parent().and_then(|p| p.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or(stem)
+        } else {
+            stem
+        }
+    });
+    let clean: String = raw.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
+    let clean = clean.trim_matches('_').to_string();
+    if clean.is_empty() { "unpacked_mod".into() } else { clean }
+}
+
+/// Unpacks every asset into `dest` (which must not exist yet or be empty). When the pak has no
+/// `_metadata` file of its own, one is written from the pak's index metadata, so the folder is
+/// a regular mod again. Returns the number of files written.
+pub fn unpack(pak: &Pak, dest: &Path) -> Result<usize> {
+    if dest.exists() && std::fs::read_dir(dest)?.next().is_some() {
+        bail!("{} already exists and is not empty", dest.display());
+    }
+    std::fs::create_dir_all(dest)?;
+    let mut n = 0;
+    let mut paths: Vec<&String> = pak.paths().collect();
+    paths.sort();
+    for p in paths {
+        let target = crate::project::safe_join(dest, p)?;
+        if let Some(d) = target.parent() {
+            std::fs::create_dir_all(d)?;
+        }
+        std::fs::write(&target, pak.read(p)?)?;
+        n += 1;
+    }
+    if !dest.join("_metadata").exists() && !dest.join(".metadata").exists() {
+        std::fs::write(dest.join("_metadata"), crate::sbjson::pretty(&Value::Object(pak.metadata.clone())))?;
+    }
+    Ok(n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

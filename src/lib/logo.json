@@ -1,0 +1,36 @@
+{
+  "palette": {
+    "K": "#1b1009",
+    "H": "#f0a060",
+    "R": "#d0602c",
+    "r": "#8c3818",
+    "C": "#8a8a96",
+    "c": "#5c5c68",
+    "W": "#b07a40",
+    "w": "#80542a",
+    "Y": "#ffe070",
+    "y": "#f0a830",
+    "D": "#5a3416",
+    "G": "#6cc040",
+    "g": "#3c8228",
+    "s": "#d8d8e4"
+  },
+  "art": [
+    "............s...",
+    "..........KKK...",
+    ".......KK.KCK...",
+    "......KHRKKcK...",
+    ".....KHRRRKcK...",
+    "....KHRRRRRKK...",
+    "...KHRRRRRRRK...",
+    "..KrrrrrrrrrrK..",
+    "...KWWWWWWWWK...",
+    "...KWYyWWDDWK...",
+    "...KWyyWWDDWK...",
+    "...KwwwwwDDwK...",
+    "...KWWWWWDDWK...",
+    "..GKKKKKKKKKKG..",
+    ".GGGGGGGGGGGGGG.",
+    "..gggggggggggg.."
+  ]
+}
