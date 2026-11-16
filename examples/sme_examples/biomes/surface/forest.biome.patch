@@ -1,0 +1,44 @@
+[
+  {
+    "op": "add",
+    "path": "/surfacePlaceables/items/-",
+    "value": {
+      "mode": "floor",
+      "priority": 1,
+      "variants": 1,
+      "distribution": "/biomes/distributions.config:mainBiomeMicrodungeon",
+      "type": "microdungeon",
+      "microdungeons": [
+        "smallhut"
+      ]
+    }
+  },
+  {
+    "op": "add",
+    "path": "/surfacePlaceables/items/-",
+    "value": {
+      "mode": "floor",
+      "priority": 1,
+      "variants": 1,
+      "distribution": "/biomes/distributions.config:mainBiomeMicrodungeon",
+      "type": "microdungeon",
+      "microdungeons": [
+        "lookouttower"
+      ]
+    }
+  },
+  {
+    "op": "add",
+    "path": "/undergroundPlaceables/items/-",
+    "value": {
+      "mode": "floor",
+      "priority": 1,
+      "variants": 1,
+      "distribution": "/biomes/distributions.config:mainBiomeMicrodungeon",
+      "type": "microdungeon",
+      "microdungeons": [
+        "buriedcamp"
+      ]
+    }
+  }
+]

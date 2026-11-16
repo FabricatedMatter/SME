@@ -1,0 +1,8 @@
+{
+  "name": "sme_examples",
+  "friendlyName": "SME Example Microdungeons",
+  "author": "SME",
+  "version": "1.0",
+  "description": "Four small example microdungeons made with SME: a hut with two variants, a wired lookout tower, a desert oasis and an underground camp.",
+  "priority": 0
+}

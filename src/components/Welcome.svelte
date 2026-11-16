@@ -78,11 +78,11 @@
 
 {#if showNew}
   <Modal title="New mod" subtitle="A folder that becomes your Starbound mod" icon="plus" onclose={() => (showNew = false)}>
-    <label>Internal name (no spaces) <input bind:value={spec.name} placeholder="permafrost_microdungeons" oninput={() => {
+    <label>Internal name (no spaces) <input bind:value={spec.name} placeholder="my_microdungeons" oninput={() => {
       spec.name = spec.name.replace(/\s+/g, "_");
       if (spec.dir) spec.dir = spec.dir.replace(/[^/]*$/, spec.name);
     }} /></label>
-    <label>Display name <input bind:value={spec.friendly_name} placeholder="The &quot;Permafrost&quot; microdungeon six-pack" /></label>
+    <label>Display name <input bind:value={spec.friendly_name} placeholder="My Microdungeons" /></label>
     <label>Author <input bind:value={spec.author} /></label>
     <label>Description <textarea rows="2" bind:value={spec.description}></textarea></label>
     <label>Folder

@@ -1,0 +1,173 @@
+{
+  "smeexampleHutTreasure": [
+    [
+      0,
+      {
+        "fill": [
+          {
+            "item": [
+              "money",
+              30
+            ]
+          }
+        ],
+        "pool": [
+          {
+            "weight": 0.4,
+            "item": [
+              "bandage",
+              3
+            ]
+          },
+          {
+            "weight": 0.3,
+            "item": [
+              "torch",
+              5
+            ]
+          },
+          {
+            "weight": 0.2,
+            "item": [
+              "bread",
+              2
+            ]
+          },
+          {
+            "weight": 0.1,
+            "pool": "basicTreasure"
+          }
+        ],
+        "poolRounds": [
+          [
+            0.5,
+            1
+          ],
+          [
+            0.35,
+            2
+          ],
+          [
+            0.15,
+            3
+          ]
+        ]
+      }
+    ]
+  ],
+  "smeexampleTowerTreasure": [
+    [
+      0,
+      {
+        "fill": [
+          {
+            "item": [
+              "money",
+              80
+            ]
+          }
+        ],
+        "pool": [
+          {
+            "weight": 0.6,
+            "item": [
+              "ironbar",
+              4
+            ]
+          },
+          {
+            "weight": 0.4,
+            "pool": "weapon"
+          }
+        ],
+        "poolRounds": [
+          [
+            0.6,
+            1
+          ],
+          [
+            0.4,
+            2
+          ]
+        ]
+      }
+    ]
+  ],
+  "smeexampleOasisTreasure": [
+    [
+      0,
+      {
+        "pool": [
+          {
+            "weight": 0.5,
+            "item": [
+              "cactusjuice",
+              2
+            ]
+          },
+          {
+            "weight": 0.5,
+            "item": [
+              "bread",
+              2
+            ]
+          }
+        ],
+        "poolRounds": [
+          [
+            1,
+            1
+          ]
+        ]
+      }
+    ]
+  ],
+  "smeexampleCampTreasure": [
+    [
+      0,
+      {
+        "fill": [
+          {
+            "item": [
+              "money",
+              50
+            ]
+          }
+        ],
+        "pool": [
+          {
+            "weight": 0.5,
+            "item": [
+              "copperbar",
+              5
+            ]
+          },
+          {
+            "weight": 0.3,
+            "item": [
+              "torch",
+              10
+            ]
+          },
+          {
+            "weight": 0.2,
+            "item": [
+              "bandage",
+              4
+            ]
+          }
+        ],
+        "poolRounds": [
+          [
+            0.5,
+            2
+          ],
+          [
+            0.5,
+            3
+          ]
+        ]
+      }
+    ]
+  ]
+}

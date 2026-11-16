@@ -1,0 +1,47 @@
+{
+  "metadata": {
+    "name": "smallhut",
+    "species": "generic",
+    "rules": [],
+    "anchor": [
+      "smallhut1",
+      "smallhut2"
+    ],
+    "gravity": 80,
+    "maxRadius": 1000000,
+    "maxParts": 100,
+    "protected": false
+  },
+  "parts": [
+    {
+      "name": "smallhut1",
+      "rules": [
+        [
+          "maxSpawnCount",
+          [
+            1
+          ]
+        ]
+      ],
+      "def": [
+        "tmx",
+        "smallhut1.json"
+      ]
+    },
+    {
+      "name": "smallhut2",
+      "rules": [
+        [
+          "maxSpawnCount",
+          [
+            1
+          ]
+        ]
+      ],
+      "def": [
+        "tmx",
+        "smallhut2.json"
+      ]
+    }
+  ]
+}

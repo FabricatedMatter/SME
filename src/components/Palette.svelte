@@ -19,7 +19,11 @@
   let query = $state("");
   let facetKind = $state("category");
   let facet = $state("");
-  let limit = $state(240);
+  // virtualised grid: only the rows in view are in the DOM
+  let gridEl = $state<HTMLDivElement>();
+  let scrollTop = $state(0);
+  let viewW = $state(300);
+  let viewH = $state(400);
 
   const facetsOf = $derived.by(() => {
     const out: Record<string, Set<string>> = { category: new Set(), race: new Set(), type: new Set(), colony: new Set() };
@@ -55,8 +59,18 @@
     void tab;
     void query;
     void facet;
-    limit = 240;
+    if (gridEl) gridEl.scrollTop = 0;
+    scrollTop = 0;
   });
+
+  const favSet = $derived(new Set(editor.favorites));
+  const cell = $derived(tab === "object" ? 52 : 38); // px per cell incl. gap
+  const thumb = $derived(tab === "object" ? 40 : 28);
+  const cols = $derived(Math.max(1, Math.floor((viewW - 12) / cell)));
+  const rows = $derived(Math.ceil(list.length / cols));
+  const firstRow = $derived(Math.max(0, Math.floor(scrollTop / cell) - 2));
+  const lastRow = $derived(Math.min(rows, Math.ceil((scrollTop + viewH) / cell) + 2));
+  const visible = $derived(list.slice(firstRow * cols, lastRow * cols));
 
   // ── spawn brushes ──
   type SpawnKind = "npc" | "monster" | "stagehand" | "item" | "liquid" | "custom";
@@ -188,26 +202,33 @@
         {/each}
       </div>
     {:else}
-      <div class="grid" class:big={tab === "object"}>
-        {#each list.slice(0, limit) as b (b.key)}
-          <button
-            class="cell"
-            class:on={editor.brush?.key === b.key}
-            class:fav={editor.favorites.includes(b.key)}
-            title="{b.label}{b.name && b.name !== b.label ? ` (${b.name})` : ''}{b.desc ? '\n' + b.desc : ''}\nRight-click: favourite"
-            onclick={() => pick(b)}
-            oncontextmenu={(e) => {
-              e.preventDefault();
-              editor.toggleFavorite(b.key);
-            }}
-          >
-            <Thumb image={b.image} size={tab === "object" ? 40 : 28} />
-          </button>
-        {/each}
+      <div
+        class="grid"
+        bind:this={gridEl}
+        bind:clientWidth={viewW}
+        bind:clientHeight={viewH}
+        onscroll={(e) => (scrollTop = (e.currentTarget as HTMLDivElement).scrollTop)}
+      >
+        <div class="spacer" style:height="{rows * cell}px">
+          <div class="cells" style:top="{firstRow * cell}px" style:grid-template-columns="repeat({cols}, {cell - 2}px)" style:grid-auto-rows="{cell - 2}px">
+            {#each visible as b (b.key)}
+              <button
+                class="cell"
+                class:on={editor.brush?.key === b.key}
+                class:fav={favSet.has(b.key)}
+                title="{b.label}{b.name && b.name !== b.label ? ` (${b.name})` : ''}{b.desc ? '\n' + b.desc : ''}\nRight-click: favourite"
+                onclick={() => pick(b)}
+                oncontextmenu={(e) => {
+                  e.preventDefault();
+                  editor.toggleFavorite(b.key);
+                }}
+              >
+                <Thumb image={b.image} size={thumb} />
+              </button>
+            {/each}
+          </div>
+        </div>
       </div>
-      {#if list.length > limit}
-        <button class="small more" onclick={() => (limit += 480)}>Show more ({list.length - limit} left)</button>
-      {/if}
       {#if !list.length}<p class="muted small pad">Nothing found.</p>{/if}
     {/if}
   {/if}
@@ -266,18 +287,21 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
-    gap: 2px;
     padding: 4px 6px;
-    align-content: start;
   }
-  .grid.big {
-    grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  .spacer {
+    position: relative;
+  }
+  .cells {
+    position: absolute;
+    left: 0;
+    right: 0;
+    display: grid;
+    gap: 2px;
   }
   .cell {
     padding: 2px;
-    min-height: 36px;
+    min-width: 0;
     background: rgba(0, 0, 0, 0.5);
     border: 2px solid transparent;
     box-shadow: none;
@@ -293,9 +317,6 @@
   }
   .cell.fav {
     box-shadow: inset 0 -3px 0 #e04a6a;
-  }
-  .more {
-    margin: 4px 6px;
   }
   .markers {
     flex: 1;

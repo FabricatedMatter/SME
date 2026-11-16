@@ -89,7 +89,7 @@
 {#if showNew}
   <Modal title="New microdungeon" icon="map" onclose={() => (showNew = false)} width={440}>
     <label>Name (unique, used by spawn rules)
-      <input bind:value={newName} placeholder="frozencabin" onkeydown={(e) => e.key === "Enter" && createDungeon()} />
+      <input bind:value={newName} placeholder="smallhut" onkeydown={(e) => e.key === "Enter" && createDungeon()} />
     </label>
     <div class="row">
       <label>Width <input type="number" min="4" max="500" bind:value={newW} /></label>

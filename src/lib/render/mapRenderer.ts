@@ -103,7 +103,19 @@ export class MapRenderer {
     }
     if (rect === undefined) return false;
     md.dirtyRect = undefined;
-    const r = rect ?? { x: 0, y: 0, w: md.width, h: md.height };
+    // Edge pieces overhang into neighbouring cells, and a change alters the joins of its
+    // neighbours too, so the cleared/redrawn region has to reach 2 tiles past the edit;
+    // otherwise erasing leaves the old overhangs ("outlines") behind.
+    const grow = 2;
+    const r = rect
+      ? (() => {
+          const x0 = Math.max(0, rect.x - grow),
+            y0 = Math.max(0, rect.y - grow);
+          const x1 = Math.min(md.width, rect.x + rect.w + grow),
+            y1 = Math.min(md.height, rect.y + rect.h + grow);
+          return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+        })()
+      : { x: 0, y: 0, w: md.width, h: md.height };
     // front changes alter background shadows, so always redraw both layers
     this.renderLayer(this.back, true, r);
     this.renderLayer(this.front, false, r);
