@@ -2,6 +2,7 @@
 
 pub mod assets;
 pub mod catalog;
+pub mod frames;
 pub mod install;
 pub mod pak;
 pub mod project;

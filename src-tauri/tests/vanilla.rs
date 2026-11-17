@@ -112,3 +112,21 @@ fn workshop_paks_unpack_and_roundtrip() {
         std::fs::remove_dir_all(&out).unwrap();
     }
 }
+
+/// Item icons that point at one frame of a sprite sheet resolve to a crop rectangle.
+#[test]
+fn item_icons_resolve_frames() {
+    let Some(dir) = find_install(None) else { return };
+    let a = Assets::open(&dir).unwrap();
+    let items = sme_lib::treasure::build_items(&a);
+    let cropped = items.iter().filter(|i| i.icon.as_deref().is_some_and(|s| s.contains('#'))).count();
+    eprintln!("{} items, {} icons cropped to a frame", items.len(), cropped);
+    for n in ["seashellshield", "protectoratebroadsword", "hoverbikecontrollerred"] {
+        let i = items.iter().find(|i| i.name == n);
+        eprintln!("  {n}: {:?}", i.and_then(|i| i.icon.clone()));
+        if let Some(i) = i {
+            assert!(i.icon.as_deref().unwrap_or("").contains('#'), "{n} should use a single frame");
+        }
+    }
+    assert!(cropped > 50);
+}

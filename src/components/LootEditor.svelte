@@ -174,13 +174,35 @@
     for (const l of m.values()) l.sort((a, b) => (a.shortdescription || a.name).localeCompare(b.shortdescription || b.name));
     return m;
   });
+  // sorting: by name or rarity, ascending or descending
+  let sortBy = $state<"name" | "rarity">("name");
+  let descending = $state(false);
+  const RANK: Record<string, number> = { common: 0, uncommon: 1, rare: 2, legendary: 3, essential: 4 };
+  const label = (i: ItemInfo) => i.shortdescription || i.name;
   const shownItems = $derived.by(() => {
     if (group === "tables") return [];
     const s = q.trim().toLowerCase();
     const src = s ? game.items.filter((i) => i.icon) : (grouped.get(group) ?? []);
-    if (!s) return src;
-    return src.filter((i) => `${i.shortdescription} ${i.name} ${i.category}`.toLowerCase().includes(s));
+    const list = s ? src.filter((i) => `${i.shortdescription} ${i.name} ${i.category}`.toLowerCase().includes(s)) : [...src];
+    const dir = descending ? -1 : 1;
+    list.sort((a, b) =>
+      sortBy === "rarity"
+        ? dir * ((RANK[a.rarity] ?? -1) - (RANK[b.rarity] ?? -1)) || label(a).localeCompare(label(b))
+        : dir * label(a).localeCompare(label(b)),
+    );
+    return list;
   });
+
+  // instant hover label (the native title tooltip is slow / missing in the app window)
+  let tip = $state<{ text: string; sub: string; x: number; y: number } | null>(null);
+  $effect(() => {
+    void shownItems;
+    tip = null;
+  });
+  function showTip(e: PointerEvent, i: ItemInfo) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    tip = { text: label(i), sub: [i.rarity, i.name].filter(Boolean).join(" · "), x: r.left + r.width / 2, y: r.top - 4 };
+  }
   const shownTables = $derived.by(() => {
     const s = q.trim().toLowerCase();
     const all = [...Object.keys(editor.projectPools).filter((n) => n !== selected), ...Object.keys(game.index?.pools ?? {}).filter((n) => !editor.projectPools[n]).sort()];
@@ -423,6 +445,16 @@
         </div>
       </div>
       <input type="search" placeholder="Search all items…" bind:value={q} />
+      <div class="sortrow">
+        <span class="muted small">Sort by</span>
+        <select bind:value={sortBy}>
+          <option value="name">Name</option>
+          <option value="rarity">Rarity</option>
+        </select>
+        <button class="small" onclick={() => (descending = !descending)} title="Toggle ascending / descending">
+          {#if sortBy === "name"}{descending ? "Z → A" : "A → Z"}{:else}{descending ? "Rarest first" : "Commonest first"}{/if}
+        </button>
+      </div>
       <div class="groups">
         {#each ITEM_GROUPS as g}
           <button class="small" class:gold={group === g && !q} onclick={() => {
@@ -441,14 +473,15 @@
           {/each}
         </div>
       {:else}
-        <VirtualGrid items={shownItems} cell={46} key={(i) => i.name} resetOn={`${group}|${q}`}>
+        <VirtualGrid items={shownItems} cell={46} key={(i) => i.name} resetOn={`${group}|${q}|${sortBy}|${descending}`}>
           {#snippet children(i)}
             <button
               class="icell"
               class:has={inTable.has(i.name)}
               style:--rc={rarityColor[i.rarity] ?? "#555"}
-              title="{i.shortdescription || i.name} ({i.name}){i.rarity ? ' · ' + i.rarity : ''}"
               onclick={() => addItem(i)}
+              onpointerenter={(e) => showTip(e, i)}
+              onpointerleave={() => (tip = null)}
             >
               <Thumb image={"a:" + i.icon} size={32} />
             </button>
@@ -457,6 +490,12 @@
         {#if !shownItems.length}<p class="muted small pad">No items found.</p>{/if}
       {/if}
     </aside>
+    {#if tip}
+      <div class="tip" style:left="{tip.x}px" style:top="{tip.y}px">
+        <div>{tip.text}</div>
+        {#if tip.sub}<div class="muted small">{tip.sub}</div>{/if}
+      </div>
+    {/if}
   {:else}
     <section class="detail"><p class="muted">No loot table yet. Create one on the left, or right-click a container on the map.</p></section>
   {/if}
@@ -640,6 +679,26 @@
   .seg {
     display: flex;
     gap: 2px;
+  }
+  .sortrow {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 0 8px;
+  }
+  .sortrow select {
+    flex: 1;
+  }
+  .tip {
+    position: fixed;
+    z-index: 60;
+    transform: translate(-50%, -100%);
+    pointer-events: none;
+    white-space: nowrap;
+    padding: 4px 8px;
+    background: #101010;
+    border: 2px solid #000;
+    box-shadow: inset 0 0 0 2px #3c3c3c;
   }
   .groups {
     display: flex;

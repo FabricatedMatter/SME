@@ -44,8 +44,23 @@ fn strip_markup(s: &str) -> String {
     out
 }
 
+/// An icon spec (`image.png:frame?directives`) as `path` or `path#x,y,w,h` (one frame of a sheet).
+fn icon_ref(a: &Assets, frames: &mut crate::frames::Frames, item_path: &str, spec: &str) -> String {
+    let no_dir = spec.split('?').next().unwrap_or(spec);
+    let (img, frame) = match no_dir.split_once(':') {
+        Some((i, f)) => (i, Some(f)),
+        None => (no_dir, None),
+    };
+    let path = relative_to(item_path, img);
+    match frames.resolve(a, &path, frame) {
+        Some([x, y, w, h]) if w > 0 && h > 0 => format!("{path}#{x},{y},{w},{h}"),
+        _ => path,
+    }
+}
+
 pub fn build_items(a: &Assets) -> Vec<ItemInfo> {
     let mut out = BTreeMap::new();
+    let mut frames = crate::frames::Frames::default();
     for p in a.list(|p| ITEM_EXTS.iter().any(|e| p.ends_with(e))) {
         let Ok(v) = a.json(&p) else { continue };
         let kind = p.rsplit('.').next().unwrap_or("").to_string();
@@ -62,12 +77,8 @@ pub fn build_items(a: &Assets) -> Vec<ItemInfo> {
             continue;
         }
         let icon = match v.get("inventoryIcon") {
-            Some(Value::String(s)) => Some(relative_to(&p, s.split(['?', ':']).next().unwrap_or(s))),
-            Some(Value::Array(arr)) => arr
-                .first()
-                .and_then(|x| x.get("image"))
-                .and_then(|x| x.as_str())
-                .map(|s| relative_to(&p, s.split(['?', ':']).next().unwrap_or(s))),
+            Some(Value::String(s)) => Some(icon_ref(a, &mut frames, &p, s)),
+            Some(Value::Array(arr)) => arr.first().and_then(|x| x.get("image")).and_then(|x| x.as_str()).map(|s| icon_ref(a, &mut frames, &p, s)),
             _ => None,
         };
         out.insert(
