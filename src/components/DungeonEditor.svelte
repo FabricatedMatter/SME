@@ -94,17 +94,7 @@
 
   function deletePart(part: any) {
     if (!confirm(`Remove part "${part.name}"? Its map file will be deleted when you save.`)) return;
-    d.parts = parts.filter((p) => p !== part);
-    d.metadata.anchor = (meta.anchor ?? []).filter((a: string) => a !== part.name);
-    for (const f of partFiles(part)) {
-      const mp = joinRel(path, f);
-      if (!d.parts.some((p: any) => partFiles(p).some((x) => joinRel(path, x) === mp))) {
-        editor.removeFile(mp);
-        const { [mp]: _, ...rest } = editor.maps;
-        editor.maps = rest;
-      }
-    }
-    touch();
+    editor.deletePart(path, part.name);
   }
 
   const spawnRules = $derived(editor.spawnRules.filter((r) => r.dungeons.includes(meta.name)));
@@ -117,15 +107,7 @@
 
   function deleteDungeon() {
     if (!confirm(`Delete the dungeon ${meta.name} and all its part maps when you save?`)) return;
-    for (const part of parts)
-      for (const f of partFiles(part)) {
-        const mp = joinRel(path, f);
-        editor.removeFile(mp);
-      }
-    editor.removeFile(path);
-    for (const r of editor.spawnRules) r.dungeons = r.dungeons.filter((n) => n !== meta.name);
-    editor.spawnDirty = true;
-    editor.view = { kind: "mod" };
+    editor.deleteDungeon(path);
   }
 
   const nameClash = $derived(meta.name && game.index?.dungeons[meta.name]?.vanilla && game.index.dungeons[meta.name].file !== "/" + path);

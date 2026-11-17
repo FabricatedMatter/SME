@@ -8,6 +8,7 @@
 // A chest uses, for the planet's threat level, the version with the highest start level
 // at or below it (or the first version if none is).
 
+import { api } from "./api";
 import { editor } from "./editor.svelte";
 import { game } from "./game.svelte";
 import type { MapDoc } from "./mapdoc.svelte";
@@ -50,6 +51,59 @@ export function versionFor(levels: any[], threat: number): number {
   let low = 0;
   levels.forEach((l, i) => Number(l[0]) < Number(levels[low][0]) && (low = i));
   return low;
+}
+
+// ── random picks ──
+export interface Rounds {
+  /** [weight, number of picks] */
+  dist: [number, number][];
+  min: number;
+  max: number;
+  /** odds aren't an even spread between min and max */
+  custom: boolean;
+}
+/** How many random picks a table version makes (`poolRounds`: a number or [[weight, count], …]). */
+export function roundsOf(cfg: any): Rounds {
+  const r = cfg?.poolRounds;
+  if (typeof r === "number") return { dist: [[1, r]], min: r, max: r, custom: false };
+  if (Array.isArray(r) && r.length) {
+    const dist = r.map((x: any) => [Number(x[0]) || 0, Number(x[1]) || 0] as [number, number]);
+    const counts = dist.map((d) => d[1]);
+    const min = Math.min(...counts),
+      max = Math.max(...counts);
+    const even = dist.every((d) => Math.abs(d[0] - dist[0][0]) < 1e-9) && counts.length === max - min + 1;
+    return { dist, min, max, custom: !even };
+  }
+  return { dist: [[1, 1]], min: 1, max: 1, custom: false };
+}
+/** Chance (0..1) that a random-pick entry of weight `w` turns up at least once in a container. */
+export function chanceIn(cfg: any, w: number): number {
+  const total = ((cfg?.pool ?? []) as any[]).reduce((s, e) => s + (Number(e.weight) || 0), 0);
+  if (!total) return 0;
+  const p = w / total;
+  const { dist } = roundsOf(cfg);
+  const tot = dist.reduce((s, d) => s + d[0], 0) || 1;
+  return dist.reduce((s, [dw, n]) => s + (dw / tot) * (1 - Math.pow(1 - p, n)), 0);
+}
+
+/** A loot table's versions, from the project or the game. */
+export async function loadTable(name: string): Promise<any[] | null> {
+  const own = editor.projectPools[name];
+  if (own) return editor.files[own]?.[name] ?? null;
+  const file = game.index?.pools[name]?.file;
+  if (!file) return null;
+  try {
+    const j = await api.assetJson(file);
+    return Array.isArray(j?.[name]) ? j[name] : null;
+  } catch {
+    return null;
+  }
+}
+/** Opens `n` containers with this table on a planet of `threat` (project tables included). */
+export async function rollTable(name: string, threat: number, n: number) {
+  const projectPools: Record<string, any> = {};
+  for (const p of editor.poolPaths) Object.assign(projectPools, JSON.parse(JSON.stringify(editor.files[p] ?? {})));
+  return api.simulateLoot(projectPools, name, threat, n);
 }
 
 // ── friendly item groups for the item palette ──

@@ -21,12 +21,17 @@
 
   let el = $state<HTMLDivElement>();
   let pos = $state({ x: 0, y: 0 });
-  // keep the menu on screen
+  // keep the menu on screen, also when it grows (e.g. a loot preview opens)
   $effect(() => {
-    void entry;
     if (!el) return;
-    const r = el.getBoundingClientRect();
-    pos = { x: Math.max(4, Math.min(x, window.innerWidth - r.width - 4)), y: Math.max(4, Math.min(y, window.innerHeight - r.height - 4)) };
+    const place = () => {
+      const r = el!.getBoundingClientRect();
+      pos = { x: Math.max(4, Math.min(x, window.innerWidth - r.width - 4)), y: Math.max(4, Math.min(y, window.innerHeight - r.height - 4)) };
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    return () => ro.disconnect();
   });
 
   onMount(() => {
@@ -88,7 +93,9 @@
   .menu {
     position: fixed;
     z-index: 50;
-    width: 300px;
+    width: 340px;
+    max-height: calc(100vh - 8px);
+    overflow-y: auto;
     padding: 8px;
     display: flex;
     flex-direction: column;

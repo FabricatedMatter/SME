@@ -8,7 +8,7 @@ import { MapDoc, newDoc, GROUPS } from "./mapdoc.svelte";
 import { buildPatches, parseSpawns, type ParsedSpawns, type SpawnRule } from "./spawn";
 import type { Problem, ProjectInfo, Props } from "./types";
 
-export type Tool = "pencil" | "line" | "rect" | "fill" | "erase" | "pick" | "select" | "spawn" | "wire";
+export type Tool = "pan" | "pencil" | "line" | "rect" | "fill" | "erase" | "pick" | "select" | "spawn" | "wire";
 export type EditLayer = "front" | "back" | "objects";
 
 export type View =
@@ -110,7 +110,7 @@ class Editor {
    *  parts those patches add. Older mods often add their maps to e.g. tundramicrodungeons. */
   get dungeonPatches(): { path: string; target: string; parts: any[]; anchors: string[] }[] {
     return (this.project?.patches ?? [])
-      .filter((f) => f.path.endsWith(".dungeon.patch"))
+      .filter((f) => f.path.endsWith(".dungeon.patch") && !this.deletedFiles.has(f.path))
       .map((f) => {
         const ops: any[] = Array.isArray(f.json) ? f.json.flat() : [];
         const adds = ops.filter((o) => o && o.op === "add" && o.value !== undefined);
@@ -128,7 +128,7 @@ class Editor {
     const used = new Set<string>();
     for (const d of this.dungeonPaths) for (const part of this.files[d]?.parts ?? []) for (const f of partFiles(part)) used.add(joinRel(d, f));
     for (const dp of this.dungeonPatches) for (const part of dp.parts) for (const f of partFiles(part)) used.add(joinRel(dp.path, f));
-    return (this.project?.maps ?? []).filter((p) => !used.has(p) && !this.maps[p]?.dirty);
+    return (this.project?.maps ?? []).filter((p) => !used.has(p) && !this.maps[p]?.dirty && !this.deletedFiles.has(p));
   }
 
   get poolPaths(): string[] {
@@ -275,6 +275,78 @@ class Editor {
     delete this.files[path];
     this.dirtyFiles.delete(path);
     this.deletedFiles.add(path);
+  }
+
+  // ── deleting (files go away on save) ──
+  private leaveIf(pred: (v: View) => boolean) {
+    if (pred(this.view)) this.view = { kind: "mod" };
+  }
+
+  /** Deletes a map file and closes it. */
+  deleteMap(path: string) {
+    this.removeFile(path);
+    const { [path]: _, ...rest } = this.maps;
+    this.maps = rest;
+    this.leaveIf((v) => v.kind === "map" && v.path === path);
+  }
+
+  /** Map files a dungeon's parts use (relative to the project). */
+  dungeonMaps(dpath: string): string[] {
+    return [...new Set((this.files[dpath]?.parts ?? []).flatMap((p: any) => partFiles(p).map((f) => joinRel(dpath, f))))] as string[];
+  }
+
+  /** Deletes a dungeon, its part maps and its name from spawn rules. */
+  deleteDungeon(dpath: string) {
+    const name = this.files[dpath]?.metadata?.name;
+    for (const mp of this.dungeonMaps(dpath)) this.deleteMap(mp);
+    this.removeFile(dpath);
+    if (name) {
+      for (const r of this.spawnRules) r.dungeons = r.dungeons.filter((n) => n !== name);
+      this.spawnRules = this.spawnRules.filter((r) => r.dungeons.length);
+      this.spawnDirty = true;
+    }
+    this.leaveIf((v) => (v.kind === "dungeon" && v.path === dpath) || (v.kind === "map" && v.dungeon === dpath));
+  }
+
+  /** Removes a part from its dungeon; its map file is deleted unless another part uses it. */
+  deletePart(dpath: string, partName: string) {
+    const d = this.files[dpath];
+    if (!d) return;
+    const part = d.parts.find((p: any) => p.name === partName);
+    if (!part) return;
+    d.parts = d.parts.filter((p: any) => p !== part);
+    d.metadata.anchor = (d.metadata.anchor ?? []).filter((a: string) => a !== partName);
+    for (const f of partFiles(part)) {
+      const mp = joinRel(dpath, f);
+      if (!d.parts.some((p: any) => partFiles(p).some((x) => joinRel(dpath, x) === mp))) this.deleteMap(mp);
+    }
+    this.markDirty(dpath);
+  }
+
+  /** Deletes a dungeon patch file and the maps only it uses. */
+  deletePatch(path: string) {
+    const dp = this.dungeonPatches.find((p) => p.path === path);
+    for (const part of dp?.parts ?? []) for (const f of partFiles(part)) this.deleteMap(joinRel(path, f));
+    this.removeFile(path);
+  }
+
+  /** Deletes a .treasurepools file. Returns the table names that were in it. */
+  deleteLootFile(path: string): string[] {
+    const names = Object.keys(this.files[path] ?? {});
+    this.removeFile(path);
+    this.leaveIf((v) => v.kind === "loot" && v.path === path);
+    return names;
+  }
+
+  /** Containers in open maps that use any of these loot tables. */
+  containersUsing(names: string[]): number {
+    let n = 0;
+    for (const md of Object.values(this.maps))
+      for (const { obj } of md.allObjects()) {
+        const p = String(obj.properties.parameters ?? "");
+        if (names.some((x) => p.includes(`"${x}"`))) n++;
+      }
+    return n;
   }
 
   async openMap(path: string, dungeon?: string) {

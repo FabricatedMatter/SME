@@ -42,6 +42,7 @@ A dedicated editor for Starbound (micro)dungeons, built to replace the generic
 
 | Key | Action |
 |---|---|
+| H | move tool: left-drag moves the view |
 | B / L / R / G / E / I / V / N / W | paint, line, rectangle, fill, erase, pick, select, spawn area, wire |
 | Tab / X | cycle layer: front, back, objects |
 | F | flip object (or flip the selection) |
@@ -50,6 +51,7 @@ A dedicated editor for Starbound (micro)dungeons, built to replace the generic
 | Ctrl+C / Ctrl+X / Ctrl+V | copy / cut / paste the selection |
 | Del | delete selection |
 | Space-drag, middle or right drag | pan; mouse wheel zooms |
+| Right-click (no drag) / double-click | object menu: loot for containers, flip, delete |
 | 0 | fit map |
 | Ctrl+S | save everything |
 

@@ -161,7 +161,7 @@
   function onDown(ev: PointerEvent) {
     canvas.setPointerCapture(ev.pointerId);
     const t = toTile(ev);
-    if (ev.button === 1 || ev.button === 2 || spaceDown) {
+    if (ev.button === 1 || ev.button === 2 || spaceDown || (ev.button === 0 && editor.tool === "pan")) {
       if (ev.button === 2 && editor.tool === "wire" && wirePts.length) {
         finishWire();
         return;
@@ -177,6 +177,11 @@
     }
     const tool = editor.tool;
     const objLayer = editor.layer === "objects";
+    // clicking anywhere but the selected object deselects it (the select tool handles this itself)
+    if (tool !== "select" && editor.selected.length) {
+      const hit = md.objectsAt(hoverPx.x, hoverPx.y, objSize)[0];
+      if (!hit || !editor.selected.includes(hit.obj.id)) editor.selected = [];
+    }
     if (tool === "pick") {
       const hit = md.objectsAt(hoverPx.x, hoverPx.y, objSize)[0];
       const ref = objLayer && hit?.obj.tile ? md.ref(hit.obj.tile) : md.ref(md.get(paintLayer(), t.x, t.y));
@@ -319,8 +324,13 @@
     const d = drag;
     drag = null;
     if (!d) return;
-    if (d.kind === "pan" && d.button === 2 && Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 5) {
-      openMenu(ev, false);
+    if (d.kind === "pan" && Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 5) {
+      if (d.button === 2) openMenu(ev, false);
+      else if (d.button === 0 && editor.selected.length) {
+        // a plain click with the move tool also deselects
+        const hit = md.objectsAt(hoverPx.x, hoverPx.y, objSize)[0];
+        if (!hit || !editor.selected.includes(hit.obj.id)) editor.selected = [];
+      }
       return;
     }
     if (d.kind === "paint" || d.kind === "eraseobj") md.commit();
@@ -636,6 +646,7 @@
     style:width="{size.w}px"
     style:height="{size.h}px"
     class:pan={!!drag && drag.kind === "pan"}
+    class:hand={editor.tool === "pan"}
     onpointerdown={onDown}
     onpointermove={onMove}
     onpointerup={onUp}
@@ -672,6 +683,9 @@
     display: block;
     cursor: crosshair;
     image-rendering: pixelated;
+  }
+  canvas.hand {
+    cursor: grab;
   }
   canvas.pan {
     cursor: grabbing;

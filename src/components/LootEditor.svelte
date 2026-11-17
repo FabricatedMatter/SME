@@ -5,7 +5,7 @@
   import { api } from "../lib/api";
   import { editor } from "../lib/editor.svelte";
   import { game } from "../lib/game.svelte";
-  import { descCount, descName, GROUP_LABEL, ITEM_GROUPS, itemGroup, poolNameTaken, TIERS, versionFor, withCount, type ItemGroup } from "../lib/loot";
+  import { chanceIn, descCount, descName, GROUP_LABEL, ITEM_GROUPS, itemGroup, poolNameTaken, roundsOf, TIERS, versionFor, withCount, type ItemGroup } from "../lib/loot";
   import PixelIcon from "../lib/PixelIcon.svelte";
   import type { ItemInfo } from "../lib/types";
   import Thumb from "./Thumb.svelte";
@@ -130,19 +130,7 @@
   const rarityOf = (w: number) => RARITY.find((r) => Math.abs(r.w - w) < 1e-9)?.label ?? "custom";
 
   // picks per chest: number, or [[weight, count], …]
-  const rounds = $derived.by((): { dist: [number, number][]; min: number; max: number; custom: boolean } => {
-    const r = cfg?.poolRounds;
-    if (typeof r === "number") return { dist: [[1, r]], min: r, max: r, custom: false };
-    if (Array.isArray(r) && r.length) {
-      const dist = r.map((x: any) => [Number(x[0]) || 0, Number(x[1]) || 0] as [number, number]);
-      const counts = dist.map((d) => d[1]);
-      const min = Math.min(...counts),
-        max = Math.max(...counts);
-      const even = dist.every((d) => Math.abs(d[0] - dist[0][0]) < 1e-9) && counts.length === max - min + 1;
-      return { dist, min, max, custom: !even };
-    }
-    return { dist: [[1, 1]], min: 1, max: 1, custom: false };
-  });
+  const rounds = $derived(roundsOf(cfg));
   function setRounds(min: number, max: number) {
     if (!cfg) return;
     min = Math.max(0, Math.round(min));
@@ -154,14 +142,8 @@
     }
     touch();
   }
-  const totalWeight = $derived(((cfg?.pool ?? []) as any[]).reduce((s, e) => s + (Number(e.weight) || 0), 0));
   /** chance that an entry turns up at least once in a container */
-  function chanceInChest(w: number): number {
-    if (!totalWeight) return 0;
-    const p = w / totalWeight;
-    const tot = rounds.dist.reduce((s, d) => s + d[0], 0) || 1;
-    return rounds.dist.reduce((s, [dw, n]) => s + (dw / tot) * (1 - Math.pow(1 - p, n)), 0);
-  }
+  const chanceInChest = (w: number) => chanceIn(cfg, w);
 
   // ── item palette ──
   type Target = "fill" | "pool";

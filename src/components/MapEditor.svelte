@@ -11,6 +11,7 @@
   let canvas: MapCanvas | undefined = $state();
 
   const TOOLS: { id: Tool; icon: string; label: string; key: string }[] = [
+    { id: "pan", icon: "hand", label: "Move the view (drag)", key: "H" },
     { id: "pencil", icon: "pencil", label: "Paint / place", key: "B" },
     { id: "line", icon: "line", label: "Line", key: "L" },
     { id: "rect", icon: "rect", label: "Rectangle", key: "R" },
