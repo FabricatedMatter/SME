@@ -7,6 +7,9 @@
 //   1  mid stars                  (some twinkle)
 //   2  near stars + sparkles      (some twinkle, most parallax)
 //   fx shooting stars             (created only while one is visible)
+// A new sky is generated at every launch (random seed); resizing keeps the same one. Dark dust
+// clouds ("Dunkelwolken") sit in front of the glowing nebula and the far/mid stars: they
+// swallow stars, and redden and dim the ones near their edges.
 // Parallax moves the layers with CSS transforms, so mouse movement never repaints them;
 // twinkling repaints only the few stars that twinkle, ~20 times a second.
 
@@ -70,38 +73,127 @@ const smooth = (a: number, b: number, t: number) => {
   return x * x * (3 - 2 * x);
 };
 
-/** Paints the nebula into `data` (W×H RGBA, one art pixel each); returns cloud density 0..1. */
-function paintNebula(data: Uint8ClampedArray, W: number, H: number): Float32Array {
+// coverage targets (quantiles of the seed's noise): tuned so skies look like the hand-picked one
+// (measured over 30 seeds: ~47% glowing gas, mean density ~0.19, ~11% dark clouds)
+const MASK_Q = 0.6,
+  GAS_Q = 0.55,
+  DARKMASK_Q = 0.62,
+  LANE_Q = 0.68;
+const DUST: [number, number, number] = [4, 3, 6];
+const RIM: [number, number, number] = [52, 22, 14];
+
+/** Paints the nebula into `data` (W×H RGBA, one art pixel each). Returns the glowing cloud
+ *  density and the dark-cloud extinction (both 0..1 per art pixel). */
+/** (exported for offline tuning/statistics) */
+export function paintNebula(data: Uint8ClampedArray, W: number, H: number, seed: number): { density: Float32Array; dark: Float32Array } {
   const density = new Float32Array(W * H);
+  const dark = new Float32Array(W * H);
   const F = 1 / 150; // base frequency (art pixels)
+  const sr = rng(seed);
+  const ox = sr() * 1000,
+    oy = sr() * 1000; // where in the infinite noise field this sky sits
+  const hueShift = sr() * 1.2 - 0.3;
+  const hueScale = 1.6 + sr() * 1.2;
+  const S = (seed % 100000) * 7;
+  // adaptive thresholds: sample the patch noise coarsely so every seed gets a similar amount
+  // of glowing gas (~40–45% of the sky) and of dark clouds
+  const maskN = (u: number, v: number) => fbm(u * 0.45 + 40, v * 0.45 - 12, S + 14, 2);
+  const darkN = (u: number, v: number) => fbm(u * 0.33 - 61, v * 0.33 + 25, S + 23, 2);
+  const quantile = (f: (u: number, v: number) => number, q: number) => {
+    const vals: number[] = [];
+    for (let y = 0; y < H; y += 12) for (let x = 0; x < W; x += 12) vals.push(f(x * F + ox, y * F + oy));
+    vals.sort((a, b) => a - b);
+    return vals[Math.floor(q * (vals.length - 1))] ?? 0.5;
+  };
+  const gasN = (u: number, v: number) => fbm(u + 1.6 * fbm(u + 3.1, v + 1.7, S + 11, 3), v + 1.6 * fbm(u - 5.2, v + 8.3, S + 12, 3), S + 13, 5);
+  const laneN = (u: number, v: number) => {
+    const dw = fbm(u * 0.9 + 7.7, v * 0.9 - 3.3, S + 21, 3);
+    return fbm(u * 1.25 + 1.4 * dw, v * 1.25 - 1.4 * dw, S + 22, 5);
+  };
+  // thresholds from this seed's own noise, so every sky has a similar amount of gas and dust
+  const m0 = quantile(maskN, MASK_Q) - 0.15; // ramp midpoint at the quantile
+  const n0 = quantile(gasN, GAS_Q) - 0.18;
+  const k0 = quantile(darkN, DARKMASK_Q) - 0.11;
+  const l0 = quantile(laneN, LANE_Q) - 0.09;
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
-      const u = x * F,
-        v = y * F;
+      const u = x * F + ox,
+        v = y * F + oy;
       // domain warp gives the wispy, swirled cloud shapes
-      const wx = fbm(u + 3.1, v + 1.7, 11, 3),
-        wy = fbm(u - 5.2, v + 8.3, 12, 3);
-      const n = fbm(u + 1.6 * wx, v + 1.6 * wy, 13, 5);
+      const wx = fbm(u + 3.1, v + 1.7, S + 11, 3),
+        wy = fbm(u - 5.2, v + 8.3, S + 12, 3);
+      const n = fbm(u + 1.6 * wx, v + 1.6 * wy, S + 13, 5);
       // ridged noise along the warped field gives thin bright filaments
-      const rn = 1 - Math.abs(2 * fbm(u * 2.2 + 2.4 * wx, v * 2.2 + 2.4 * wy, 16, 4) - 1);
+      const rn = 1 - Math.abs(2 * fbm(u * 2.2 + 2.4 * wx, v * 2.2 + 2.4 * wy, S + 16, 4) - 1);
       // large patches: much of the sky stays empty
-      const mask = smooth(0.4, 0.7, fbm(u * 0.45 + 40, v * 0.45 - 12, 14, 2));
-      const d = Math.min(1, (smooth(0.38, 0.76, n) * 0.8 + rn ** 10 * 0.45) * mask);
+      const mask = smooth(m0, m0 + 0.3, maskN(u, v));
+      const d = Math.min(1, (smooth(n0, n0 + 0.36, n) * 0.8 + rn ** 10 * 0.45) * mask);
       density[y * W + x] = d;
       const t = BAYER[(y & 3) * 4 + (x & 3)];
       // colour region: blend factor between two ramps, dithered
-      const hue = fbm(u * 0.6 - 20, v * 0.6 + 33, 15, 2) * 2.2 - 0.1; // 0..2
+      const hue = fbm(u * 0.6 - 20, v * 0.6 + 33, S + 15, 2) * hueScale + hueShift; // ~0..2
       const hi = Math.max(0, Math.min(1, Math.floor(hue)));
       const ramp = RAMPS[hue - hi > t ? hi + 1 : hi];
       const lvl = Math.max(0, Math.min(ramp.length - 1, Math.floor(d * (ramp.length - 0.6) + (t - 0.5) * 0.9)));
-      const c = ramp[lvl];
+      let c = ramp[lvl];
+
+      // dark clouds: warped, lumpy lanes, more likely where the nebula glows
+      const dmask = smooth(k0, k0 + 0.22, darkN(u, v)) * (0.45 + 0.55 * mask);
+      const e = smooth(l0, l0 + 0.18, laneN(u, v)) * dmask;
+      dark[y * W + x] = e;
+      if (e > 0.02) {
+        // dithered steps of opacity keep the pixel-art look
+        const q = Math.min(1, Math.floor(e * 4 + t) / 4);
+        // warm glow at the edge, only where glowing gas is behind the dust
+        const rim = Math.max(0, 1 - Math.abs(e - 0.3) / 0.22) * 0.55 * smooth(0.05, 0.4, d);
+        c = [
+          c[0] * (1 - q) + DUST[0] * q + (RIM[0] - c[0]) * rim * (1 - q),
+          c[1] * (1 - q) + DUST[1] * q + (RIM[1] - c[1]) * rim * (1 - q),
+          c[2] * (1 - q) + DUST[2] * q + (RIM[2] - c[2]) * rim * (1 - q),
+        ];
+      }
       const i = (y * W + x) * 4;
       data[i] = c[0];
       data[i + 1] = c[1];
       data[i + 2] = c[2];
       data[i + 3] = 255;
     }
-  return density;
+  return { density, dark };
+}
+
+/** A star colour pulled toward deep orange-red by dust extinction `e` (0..1). */
+function redden(hex: string, e: number): string {
+  const k = Math.min(1, e * 1.7);
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255,
+    g = (n >> 8) & 255,
+    b = n & 255;
+  const mix = (a: number, z: number) => Math.round(a + (z - a) * k);
+  return `rgb(${mix(r, 255)}, ${mix(g, 110)}, ${mix(b, 60)})`;
+}
+
+export interface SkyOptions {
+  parallax: boolean;
+  /** twinkling and shooting stars */
+  motion: boolean;
+}
+const OPTS_KEY = "sme.sky";
+export function loadSkyOptions(): SkyOptions {
+  try {
+    return { parallax: true, motion: true, ...JSON.parse(localStorage.getItem(OPTS_KEY) ?? "{}") };
+  } catch {
+    return { parallax: true, motion: true };
+  }
+}
+let skyOpts = loadSkyOptions();
+/** Changes the background options now and remembers them for the next launch. */
+export function setSkyOptions(o: SkyOptions) {
+  skyOpts = { ...o };
+  try {
+    localStorage.setItem(OPTS_KEY, JSON.stringify(skyOpts));
+  } catch {
+    /* storage unavailable: still applies for this session */
+  }
 }
 
 const STAR_COLORS = ["#ffffff", "#cfd8ff", "#ffe9a8", "#a8c4ff"];
@@ -126,6 +218,10 @@ interface Layer {
 
 export function startSky(root: HTMLElement) {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const still = () => reduce.matches || !skyOpts.motion;
+  // a fresh sky each launch; `#seed=123` in the URL pins one (for testing)
+  const pinned = /seed=(\d+)/.exec(location.hash);
+  const seed = pinned ? Number(pinned[1]) : (Math.random() * 2 ** 31) >>> 0;
   let layers: Layer[] = [];
   let P = 3; // device pixels per art pixel
   let dpr = 1;
@@ -161,7 +257,7 @@ export function startSky(root: HTMLElement) {
     ah = Math.ceil((window.innerHeight * dpr) / P);
     const W = aw + 2 * MARGIN,
       H = ah + 2 * MARGIN;
-    const r = rng(1701);
+    const r = rng(seed ^ 0x5bd1e995);
     layers = [0, 1, 2].map(() => {
       const [canvas, ctx] = makeCanvas(W, H, MARGIN);
       return { canvas, ctx, twinklers: [], shift: "" };
@@ -173,7 +269,7 @@ export function startSky(root: HTMLElement) {
     small.height = H;
     const sctx = small.getContext("2d")!;
     const img = sctx.createImageData(W, H);
-    const density = paintNebula(img.data, W, H);
+    const { density, dark } = paintNebula(img.data, W, H, seed);
     sctx.putImageData(img, 0, 0);
     layers[0].ctx.drawImage(small, 0, 0, W * P, H * P);
 
@@ -196,11 +292,18 @@ export function startSky(root: HTMLElement) {
         const x = Math.floor(r() * W),
           y = Math.floor(r() * H);
         if (!free(x, y, 0)) continue;
-        // more stars inside the clouds, fewer in empty space
+        // more stars inside the glowing clouds, fewer in empty space
         if (r() > 0.45 + 1.4 * density[y * W + x]) continue;
+        // dark clouds are in front of the far and mid stars: swallow or redden them
+        const e = li < 2 ? dark[y * W + x] : 0;
+        if (e > (li === 0 ? 0.5 : 0.7)) continue;
         taken.add(y * W + x);
-        const color = STAR_COLORS[Math.floor(r() * STAR_COLORS.length)];
-        const alpha = a0 + r() * ar;
+        let color = STAR_COLORS[Math.floor(r() * STAR_COLORS.length)];
+        let alpha = a0 + r() * ar;
+        if (e > 0.03) {
+          color = redden(color, e);
+          alpha *= 1 - e * 0.8;
+        }
         if (li > 0 && r() < 0.35) {
           L.twinklers.push({ x, y, color, alpha, amp: 0.3 + r() * 0.45, speed: 0.4 + r() * 1.4, phase: r() * Math.PI * 2, sparkle: false });
         } else {
@@ -250,11 +353,11 @@ export function startSky(root: HTMLElement) {
     if (!force && now - lastTwinkle < TWINKLE_MS) return;
     lastTwinkle = now;
     const t = now / 1000;
-    const still = reduce.matches;
+    const calm = still();
     for (const L of layers) {
       for (const s of L.twinklers) {
         // smooth, slightly irregular scintillation: two sines at unrelated rates
-        const w = still ? 0.5 : 0.5 + 0.35 * Math.sin(t * s.speed + s.phase) + 0.15 * Math.sin(t * s.speed * 2.7 + s.phase * 1.3);
+        const w = calm ? 0.5 : 0.5 + 0.35 * Math.sin(t * s.speed + s.phase) + 0.15 * Math.sin(t * s.speed * 2.7 + s.phase * 1.3);
         drawTwinkler(L.ctx, s, 1 - s.amp * Math.max(0, Math.min(1, w)));
       }
       L.ctx.globalAlpha = 1;
@@ -276,7 +379,7 @@ export function startSky(root: HTMLElement) {
 
   function shootingStar(now: number) {
     if (!shot) {
-      if (now < nextShot || reduce.matches) return;
+      if (now < nextShot || still()) return;
       const dir = Math.random() < 0.5 ? 1 : -1; // travelling right or left
       const angle = 0.3 + Math.random() * 0.35; // radians below horizontal
       const speed = 0.14 + Math.random() * 0.08; // art pixels per ms
@@ -331,9 +434,10 @@ export function startSky(root: HTMLElement) {
   }
 
   function frame(now: number) {
-    if (!reduce.matches) {
-      cur.x += (target.x - cur.x) * 0.04;
-      cur.y += (target.y - cur.y) * 0.04;
+    const goal = reduce.matches || !skyOpts.parallax ? { x: 0, y: 0 } : target;
+    if (Math.abs(goal.x - cur.x) + Math.abs(goal.y - cur.y) > 1e-4) {
+      cur.x += (goal.x - cur.x) * 0.04;
+      cur.y += (goal.y - cur.y) * 0.04;
       applyParallax();
     }
     twinkle(now);
