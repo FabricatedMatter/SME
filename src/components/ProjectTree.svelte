@@ -2,34 +2,10 @@
   import { editor, joinRel, partFiles } from "../lib/editor.svelte";
   import PixelIcon from "../lib/PixelIcon.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
-  import Modal from "./Modal.svelte";
+  import NewDungeonDialog from "./NewDungeonDialog.svelte";
 
   const v = $derived(editor.view);
   let showNew = $state(false);
-  let newName = $state("");
-  let newW = $state(40);
-  let newH = $state(30);
-  let anchors = $state(true);
-  let err = $state("");
-
-  function createDungeon() {
-    err = "";
-    const name = newName.trim().replace(/\s+/g, "_");
-    if (!/^[A-Za-z0-9_-]+$/.test(name)) {
-      err = "Use letters, digits, _ and - only.";
-      return;
-    }
-    try {
-      const d = editor.newDungeon(name, { width: newW, height: newH, anchors });
-      showNew = false;
-      newName = "";
-      const part = editor.files[d].parts[0];
-      void editor.openMap(joinRel(d, partFiles(part)[0]), d);
-    } catch (e) {
-      err = String(e);
-    }
-  }
-
   function newLootFile() {
     const base = (editor.project?.metadata?.name ?? "mod").replace(/\W+/g, "").toLowerCase() || "mod";
     let p = `treasure/${base}.treasurepools`;
@@ -75,6 +51,10 @@
   function askDeletePatch(path: string, target: string, parts: number) {
     if (!confirm(`Delete ${path}?\n\nThe ${parts} part(s) it adds to the game's "${target}" dungeon and their map files are deleted when you save.`)) return;
     editor.deletePatch(path);
+  }
+  function askDeletePatchPart(path: string, target: string, part: string) {
+    if (!confirm(`Remove the part "${part}" from what your mod adds to the game's "${target}" dungeon?\n\nIts map file is deleted when you save (unless another part uses it).`)) return;
+    editor.deletePatchPart(path, part);
   }
   function askDeleteLoot(p: string) {
     const names = Object.keys(editor.files[p] ?? {});
@@ -143,6 +123,8 @@
           title: mp,
           on: isMap(mp),
           open: () => editor.openMap(mp),
+          del: () => askDeletePatchPart(dp.path, dp.target, part.name),
+          delLabel: "Remove part…",
         })}
       {/each}
     {/each}
@@ -204,25 +186,7 @@
 
 {#if menu}<ContextMenu items={menu.items} x={menu.x} y={menu.y} title={menu.title} onclose={() => (menu = null)} />{/if}
 
-{#if showNew}
-  <Modal title="New microdungeon" icon="map" onclose={() => (showNew = false)} width={440}>
-    <label>Name (unique, used by spawn rules)
-      <input bind:value={newName} placeholder="smallhut" onkeydown={(e) => e.key === "Enter" && createDungeon()} />
-    </label>
-    <div class="row">
-      <label>Width <input type="number" min="4" max="500" bind:value={newW} /></label>
-      <label>Height <input type="number" min="4" max="500" bind:value={newH} /></label>
-    </div>
-    <label class="chk"><input type="checkbox" bind:checked={anchors} /> Start with ground/air anchors along the bottom</label>
-    <p class="muted small">Creates <code>dungeons/microdungeons/{newName || "name"}/</code> with a .dungeon file and a first part.</p>
-    {#if err}<p class="bad">{err}</p>{/if}
-    {#snippet footer()}
-      <div style="flex:1"></div>
-      <button onclick={() => (showNew = false)}>Cancel</button>
-      <button class="gold" onclick={createDungeon}>Create</button>
-    {/snippet}
-  </Modal>
-{/if}
+{#if showNew}<NewDungeonDialog onclose={() => (showNew = false)} />{/if}
 
 <style>
   .tree {
@@ -297,25 +261,5 @@
   }
   .small {
     font-size: 13px;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  label.chk {
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-  }
-  .row {
-    display: flex;
-    gap: 10px;
-  }
-  .row label {
-    flex: 1;
-  }
-  .bad {
-    color: var(--bad);
   }
 </style>

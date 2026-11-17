@@ -33,7 +33,14 @@
     return q.split(/\s+/).every((w) => hay.includes(w));
   }
 
-  const list = $derived.by(() => {
+  /** mission-only / unobtainable objects and endless liquid sources: hidden unless asked for */
+  function isHidden(b: Brush): boolean {
+    if (b.kind === "object") return game.hiddenObjects.has(b.name);
+    if (b.kind === "liquid") return b.props.source === "true" || b.props.source === true;
+    return false;
+  }
+
+  const all = $derived.by(() => {
     const q = query.trim().toLowerCase();
     let src: Brush[];
     if (tab === "fav") {
@@ -50,6 +57,8 @@
     if (tab === "material" || tab === "object") filtered.sort((a, b) => a.label.localeCompare(b.label));
     return filtered;
   });
+  const hiddenCount = $derived(tab === "fav" ? 0 : all.filter(isHidden).length);
+  const list = $derived(tab === "fav" || editor.showHidden || !hiddenCount ? all : all.filter((b) => !isHidden(b)));
 
   const favSet = $derived(new Set(editor.favorites));
   const cell = $derived(tab === "object" ? 52 : 38); // px per cell incl. gap
@@ -102,13 +111,34 @@
     editor.layer = "objects";
   }
 
+  // instant hover label (the native title tooltip is slow / missing in the app window)
+  let tip = $state<{ text: string; sub: string; x: number; y: number } | null>(null);
+  let tipW = $state(0);
+  $effect(() => {
+    void list;
+    tip = null;
+  });
+  function showTip(e: PointerEvent, b: Brush) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const sub = [
+      b.name && b.name !== b.label ? b.name : "",
+      b.kind === "object" && isHidden(b) ? "mission only" : "",
+      favSet.has(b.key) ? "right-click: unfavourite" : "right-click: favourite",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    tip = { text: b.label, sub, x: r.left + r.width / 2, y: r.top - 4 };
+  }
+  // keep the label inside the window (the sidebar sits against the right edge)
+  const tipLeft = $derived(tip ? Math.max(4, Math.min(tip.x - tipW / 2, window.innerWidth - tipW - 4)) : 0);
+
   function pick(b: Brush) {
     editor.setBrush(b);
     if (isAnchorBrush(b)) editor.layer = "objects";
   }
 </script>
 
-<div class="palette">
+<div class="palette" onwheel={() => (tip = null)}>
   <div class="tabs">
     {#each TABS as t}
       <button class="tab" class:on={tab === t.id} title={t.label} onclick={() => (tab = t.id)}>
@@ -152,7 +182,7 @@
       <datalist id="dl-npctypes">{#each game.index?.npcTypes ?? [] as s}<option value={s}></option>{/each}</datalist>
       <datalist id="dl-monsters">{#each game.index?.monsterTypes ?? [] as s}<option value={s}></option>{/each}</datalist>
       <datalist id="dl-stagehands">{#each game.index?.stagehands ?? [] as s}<option value={s}></option>{/each}</datalist>
-      {#if spawnKind === "item"}<datalist id="dl-items">{#each game.items.slice(0, 4000) as s}<option value={s.name}>{s.shortdescription}</option>{/each}</datalist>{/if}
+      {#if spawnKind === "item"}<datalist id="dl-items">{#each game.items.filter((i) => editor.showHidden || !game.hiddenItems.has(i.name)).slice(0, 4000) as s}<option value={s.name}>{s.shortdescription}</option>{/each}</datalist>{/if}
     </div>
   {:else}
     <div class="filters">
@@ -170,6 +200,12 @@
             {#each facetsOf[facetKind] ?? [] as f}<option>{f}</option>{/each}
           </select>
         </div>
+      {/if}
+      {#if hiddenCount}
+        <label class="showhid small" title={tab === "liquid" ? "Liquid tiles that never run out" : "Objects players only see in story missions, the outpost, ships and stations, or can never get"}>
+          <input type="checkbox" checked={editor.showHidden} onchange={(e) => editor.setShowHidden((e.currentTarget as HTMLInputElement).checked)} />
+          Show {hiddenCount} {tab === "liquid" ? "endless sources" : "mission-only"}
+        </label>
       {/if}
     </div>
     {#if tab === "marker"}
@@ -191,8 +227,10 @@
                 class="cell"
                 class:on={editor.brush?.key === b.key}
                 class:fav={favSet.has(b.key)}
-                title="{b.label}{b.name && b.name !== b.label ? ` (${b.name})` : ''}{b.desc ? '\n' + b.desc : ''}\nRight-click: favourite"
+                class:hid={isHidden(b)}
                 onclick={() => pick(b)}
+                onpointerenter={(e) => showTip(e, b)}
+                onpointerleave={() => (tip = null)}
                 oncontextmenu={(e) => {
                   e.preventDefault();
                   editor.toggleFavorite(b.key);
@@ -204,6 +242,12 @@
       </VirtualGrid>
       {#if !list.length}<p class="muted small pad">Nothing found.</p>{/if}
     {/if}
+  {/if}
+  {#if tip}
+    <div class="tip" bind:clientWidth={tipW} style:left="{tipLeft}px" style:top="{tip.y}px">
+      <div>{tip.text}</div>
+      {#if tip.sub}<div class="muted small">{tip.sub}</div>{/if}
+    </div>
   {/if}
   {#if editor.brush}
     <div class="current">
@@ -247,7 +291,7 @@
     flex-direction: column;
     gap: 4px;
   }
-  .filters input,
+  .filters input[type="search"],
   .filters select {
     width: 100%;
     min-width: 0;
@@ -272,8 +316,29 @@
     border-color: var(--gold);
     background: #3a3000;
   }
+  .cell.hid {
+    border-style: dashed;
+    border-color: #555;
+  }
+  .showhid {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+  }
   .cell.fav {
     box-shadow: inset 0 -3px 0 #e04a6a;
+  }
+  .tip {
+    position: fixed;
+    z-index: 60;
+    transform: translateY(-100%);
+    pointer-events: none;
+    white-space: nowrap;
+    padding: 4px 8px;
+    background: #101010;
+    border: 2px solid #000;
+    box-shadow: inset 0 0 0 2px #3c3c3c;
   }
   .markers {
     flex: 1;

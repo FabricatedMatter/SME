@@ -1,8 +1,10 @@
 <script lang="ts">
   // What a loot table contains (for one planet tier) and a few typical rolls.
+  import { editor } from "../lib/editor.svelte";
   import { game } from "../lib/game.svelte";
   import { chanceIn, descCount, descName, loadTable, rollTable, roundsOf, TIERS, versionFor } from "../lib/loot";
   import PixelIcon from "../lib/PixelIcon.svelte";
+  import TableIcon from "./TableIcon.svelte";
   import Thumb from "./Thumb.svelte";
 
   let { name }: { name: string } = $props();
@@ -69,7 +71,7 @@
       <div class="icons">
         {#each cfg.fill as f}
           {#if f.pool !== undefined}
-            <span class="chip" title="everything from {f.pool}"><PixelIcon name="chest" scale={1} /> {f.pool}</span>
+            <span class="chip" title="everything from {f.pool}"><TableIcon name={f.pool} size={16} own={!!editor.projectPools[f.pool]} /> {f.pool}</span>
           {:else}
             {@const n = descName(f.item)}
             <span class="it" title="{label(n)} ×{descCount(f.item)}"><Thumb image={icon(n)} size={24} />{#if descCount(f.item) > 1}<span class="cnt">{descCount(f.item)}</span>{/if}</span>
@@ -83,7 +85,7 @@
         {#each [...cfg.pool].sort((a, b) => (Number(b.weight) || 0) - (Number(a.weight) || 0)).slice(0, 24) as p}
           {@const pct = Math.round(chanceIn(cfg, Number(p.weight) || 0) * 100)}
           {#if p.pool !== undefined}
-            <span class="chip" title="one roll of {p.pool} · {pct}%"><PixelIcon name="chest" scale={1} /> {p.pool} <b>{pct}%</b></span>
+            <span class="chip" title="one roll of {p.pool} · {pct}%"><TableIcon name={p.pool} size={16} own={!!editor.projectPools[p.pool]} /> {p.pool} <b>{pct}%</b></span>
           {:else}
             {@const n = descName(p.item)}
             <span class="it" title="{label(n)} ×{descCount(p.item)} · {pct}% chance"><Thumb image={icon(n)} size={24} /><span class="pct">{pct}%</span></span>

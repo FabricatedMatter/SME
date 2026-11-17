@@ -28,6 +28,7 @@ export const api = {
   catalog: () => bigJson<Catalog>("catalog"),
   objectDb: () => bigJson<Record<string, ObjectInfo>>("object_db"),
   itemDb: () => bigJson<ItemInfo[]>("item_db"),
+  hiddenDb: () => invoke<{ objects: string[]; items: string[] }>("hidden_db"),
   gameIndex: () => invoke<GameIndex>("game_index"),
   assetJson: (path: string) => invoke<any>("asset_json", { path }),
 

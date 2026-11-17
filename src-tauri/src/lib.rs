@@ -1,6 +1,7 @@
 //! SME: Starbound Microdungeon Editor, Tauri backend.
 
 pub mod assets;
+pub mod availability;
 pub mod catalog;
 pub mod frames;
 pub mod install;
@@ -61,6 +62,8 @@ pub struct AppState {
     catalog_json: Mutex<Option<Arc<Vec<u8>>>>,
     objects: Mutex<Option<Arc<BTreeMap<String, catalog::ObjectInfo>>>>,
     items: Mutex<Option<Arc<Vec<treasure::ItemInfo>>>>,
+    /// Survives project changes (it only looks at vanilla); keyed by the install folder.
+    availability: Mutex<Option<(PathBuf, Arc<availability::Availability>)>>,
     project: Mutex<Option<PathBuf>>,
 }
 
@@ -121,6 +124,21 @@ impl AppState {
         }
         let o = Arc::new(treasure::build_items(&*self.assets()?));
         *self.items.lock().unwrap() = Some(o.clone());
+        Ok(o)
+    }
+
+    /// Slow-ish (it reads every vanilla dungeon), so it is kept when only the project changes.
+    fn availability(&self) -> Res<Arc<availability::Availability>> {
+        let a = self.assets()?;
+        // held while building, so the startup warm-up and the first request don't both build it
+        let mut slot = self.availability.lock().unwrap();
+        if let Some((install, o)) = slot.as_ref() {
+            if *install == a.install {
+                return Ok(o.clone());
+            }
+        }
+        let o = Arc::new(availability::build(&a, &*self.catalog()?));
+        *slot = Some((a.install.clone(), o.clone()));
         Ok(o)
     }
 
@@ -205,6 +223,16 @@ async fn object_db(st: State<'_>) -> Res<tauri::ipc::Response> {
 async fn item_db(st: State<'_>) -> Res<tauri::ipc::Response> {
     let o = st.items()?;
     Ok(tauri::ipc::Response::new(serde_json::to_vec(&*o).map_err(err)?))
+}
+
+/// Objects and items players never come across outside of missions (hidden in the palettes by default).
+#[tauri::command]
+async fn hidden_db(st: State<'_>) -> Res<Value> {
+    let av = st.availability()?;
+    let (objects, items) = (st.objects()?, st.items()?);
+    let objects: Vec<&String> = objects.keys().filter(|n| av.hidden_object(n)).collect();
+    let items: Vec<&String> = items.iter().filter(|i| av.hidden_item(&i.name, &i.kind)).map(|i| &i.name).collect();
+    Ok(serde_json::json!({ "objects": objects, "items": items }))
 }
 
 /// Names of every vanilla treasure pool, dungeon, biome, npc type, monster type and stagehand.
@@ -556,6 +584,13 @@ pub fn run() {
     let state = Arc::new(AppState::default());
     *state.settings.lock().unwrap() = load_settings();
     state.reload();
+    {
+        // warm the availability cache so the palettes can filter right away
+        let st = state.clone();
+        std::thread::spawn(move || {
+            let _ = st.availability();
+        });
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -571,6 +606,7 @@ pub fn run() {
             catalog,
             object_db,
             item_db,
+            hidden_db,
             game_index,
             ui_font,
             asset_json,

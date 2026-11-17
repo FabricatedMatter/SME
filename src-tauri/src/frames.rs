@@ -1,7 +1,7 @@
 //! Starbound `.frames` files: which rectangle of a sprite sheet `image.png:frame` refers to.
 //!
-//! The frames file for `/dir/image.png` is `/dir/image.frames`, else the nearest
-//! `default.frames` in `/dir` or a parent folder. It has a `frameGrid` (`size`, `dimensions`,
+//! The frames file for `/dir/image.png` is the nearest `image.frames` or `default.frames` in
+//! `/dir` or a parent folder (own name first at each level). It has a `frameGrid` (`size`, `dimensions`,
 //! optional `begin` and `names`) and/or a `frameList` (`name: [x0, y0, x1, y1]`), plus
 //! `aliases`. Rectangles are in image pixels from the top-left corner.
 
@@ -90,12 +90,14 @@ impl Frames {
     fn frames_path(a: &Assets, image: &str) -> Option<String> {
         let (dir, file) = image.rsplit_once('/')?;
         let stem = file.rsplit_once('.').map(|x| x.0).unwrap_or(file);
-        let own = format!("{dir}/{stem}.frames");
-        if a.exists(&own) {
-            return Some(own);
-        }
+        // like the game: in each folder from the image's up to the root, `<stem>.frames` then
+        // `default.frames` (armor `icons.png` uses `/items/armors/icons.frames`)
         let mut d = dir.to_string();
         loop {
+            let own = format!("{d}/{stem}.frames");
+            if a.exists(&own) {
+                return Some(own);
+            }
             let def = format!("{d}/default.frames");
             if a.exists(&def) {
                 return Some(def);

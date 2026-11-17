@@ -89,6 +89,8 @@ class Editor {
   toasts = $state<Toast[]>([]);
   favorites = $state<string[]>(LS.get("favorites", []));
   recentBrushes = $state<string[]>(LS.get("recent", []));
+  /** also list mission-only / unobtainable objects and items, and endless liquid sources */
+  showHidden = $state<boolean>(LS.get("showHidden", false));
   goto = $state<{ path: string; x: number; y: number; n: number } | null>(null);
 
   // ── helpers ──
@@ -109,10 +111,17 @@ class Editor {
   /** Vanilla dungeons the mod extends with JSON patches (`<name>.dungeon.patch`), with the
    *  parts those patches add. Older mods often add their maps to e.g. tundramicrodungeons. */
   get dungeonPatches(): { path: string; target: string; parts: any[]; anchors: string[] }[] {
-    return (this.project?.patches ?? [])
+    // patches on disk, plus ones made this session and not saved yet
+    const onDisk = this.project?.patches ?? [];
+    const made = Object.keys(this.files)
+      .filter((p) => p.endsWith(".dungeon.patch") && !onDisk.some((f) => f.path === p))
+      .map((p) => ({ path: p, json: this.files[p] }));
+    return [...onDisk, ...made]
       .filter((f) => f.path.endsWith(".dungeon.patch") && !this.deletedFiles.has(f.path))
       .map((f) => {
-        const ops: any[] = Array.isArray(f.json) ? f.json.flat() : [];
+        // an edited (not yet saved) patch lives in `files`
+        const json = this.files[f.path] ?? f.json;
+        const ops: any[] = Array.isArray(json) ? json.flat() : [];
         const adds = ops.filter((o) => o && o.op === "add" && o.value !== undefined);
         return {
           path: f.path,
@@ -155,6 +164,11 @@ class Editor {
     else if (this.layer === "objects" && !isAnchorBrush(b)) this.layer = "front";
     this.recentBrushes = [b.key, ...this.recentBrushes.filter((k) => k !== b.key)].slice(0, 24);
     LS.set("recent", this.recentBrushes);
+  }
+
+  setShowHidden(v: boolean) {
+    this.showHidden = v;
+    LS.set("showHidden", v);
   }
 
   toggleFavorite(key: string) {
@@ -330,6 +344,30 @@ class Editor {
     this.removeFile(path);
   }
 
+  /** Removes one part a dungeon patch adds (and its anchor entry); its map file is deleted
+   *  unless another part uses it, and the patch file goes once nothing is left in it. */
+  deletePatchPart(path: string, partName: string) {
+    const dp = this.dungeonPatches.find((p) => p.path === path);
+    const part = dp?.parts.find((p) => p.name === partName);
+    if (!dp || !part) return;
+    const src = this.files[path] ?? this.project?.patches.find((f) => f.path === path)?.json;
+    if (!Array.isArray(src)) return;
+    const drop = (o: any) =>
+      o?.op === "add" && ((/^\/parts\/(-|\d+)$/.test(o.path) && o.value?.name === partName) || (/^\/metadata\/anchor\/(-|\d+)$/.test(o.path) && o.value === partName));
+    // patches are a list of ops, or a list of op lists
+    const json = (JSON.parse(JSON.stringify(src)) as any[])
+      .map((x) => (Array.isArray(x) ? x.filter((o) => !drop(o)) : x))
+      .filter((x) => !(Array.isArray(x) ? !x.length : drop(x)));
+    const rest = dp.parts.filter((p) => p !== part);
+    for (const f of partFiles(part)) {
+      const mp = joinRel(path, f);
+      if (!rest.some((p) => partFiles(p).some((x) => joinRel(path, x) === mp))) this.deleteMap(mp);
+    }
+    // keep any other changes the patch makes; drop the file once only `test` checks are left
+    if (json.flat().some((o: any) => o?.op !== "test")) this.setFile(path, json);
+    else this.removeFile(path);
+  }
+
   /** Deletes a .treasurepools file. Returns the table names that were in it. */
   deleteLootFile(path: string): string[] {
     const names = Object.keys(this.files[path] ?? {});
@@ -392,6 +430,27 @@ class Editor {
     md.dirty = true;
     this.maps = { ...this.maps, [mpath]: md };
     return dpath;
+  }
+
+  /** Adds a new part to one of the game's dungeons: a JSON patch next to where the game keeps
+   *  it (`<its path>.patch`, made or extended) adding the part and making it an anchor, plus a
+   *  new map. Returns the map path. */
+  addPatchPart(gameFile: string, partName: string, opts: { width: number; height: number; anchors: boolean }) {
+    const patch = gameFile.replace(/^\//, "") + ".patch";
+    const file = `${partName}.json`;
+    const ops = [
+      { op: "add", path: "/parts/-", value: { name: partName, rules: [["maxSpawnCount", [1]]], def: ["tmx", file] } },
+      { op: "add", path: "/metadata/anchor/-", value: partName },
+    ];
+    const old = this.files[patch] ?? this.project?.patches.find((f) => f.path === patch)?.json;
+    const json = !Array.isArray(old) || !old.length ? ops : Array.isArray(old[0]) ? [...old, ops] : [...old, ...ops];
+    this.setFile(patch, JSON.parse(JSON.stringify(json)));
+    const mpath = joinRel(patch, file);
+    const md = new MapDoc(mpath, newDoc(opts.width, opts.height));
+    if (opts.anchors) addStarterAnchors(md);
+    md.dirty = true;
+    this.maps = { ...this.maps, [mpath]: md };
+    return mpath;
   }
 
   addPart(dpath: string, partName: string) {

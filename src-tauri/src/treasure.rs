@@ -6,7 +6,7 @@ use anyhow::{anyhow, bail, Result};
 use rand::Rng;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 const ITEM_EXTS: &[&str] = &[
     ".item", ".activeitem", ".consumable", ".object", ".matitem", ".liqitem", ".miningtool", ".flashlight", ".wieldeditem",
@@ -22,6 +22,10 @@ pub struct ItemInfo {
     pub rarity: String,
     pub kind: String,
     pub icon: Option<String>,
+    /// Built with random parts / stats when it drops (random-build weapons and shields).
+    pub random: bool,
+    /// Armor and clothes: the folder of the set this piece belongs to.
+    pub set: Option<String>,
 }
 
 fn strip_markup(s: &str) -> String {
@@ -58,6 +62,75 @@ fn icon_ref(a: &Assets, frames: &mut crate::frames::Frames, item_path: &str, spe
     }
 }
 
+/// An icon made of several drawables (`[{image, position}]`) as `a@x,y|b@x,y` (see Thumb.svelte).
+fn layered_icon(a: &Assets, frames: &mut crate::frames::Frames, item_path: &str, arr: &[Value]) -> Option<String> {
+    let layers: Vec<String> = arr
+        .iter()
+        .filter_map(|d| {
+            let img = d.get("image")?.as_str()?;
+            let pos = d.get("position").and_then(|p| p.as_array());
+            let c = |i: usize| pos.and_then(|p| p.get(i)).and_then(|x| x.as_f64()).unwrap_or(0.0);
+            Some(format!("{}@{},{}", icon_ref(a, frames, item_path, img), c(0), c(1)))
+        })
+        .collect();
+    match layers.len() {
+        0 => None,
+        1 => layers[0].split_once('@').map(|(r, _)| r.to_string()),
+        _ => Some(layers.join("|")),
+    }
+}
+
+/// Width and height from a PNG header.
+fn png_size(a: &Assets, path: &str) -> Option<(f64, f64)> {
+    let b = a.read(path).ok()?;
+    if b.len() < 24 || &b[1..4] != b"PNG" {
+        return None;
+    }
+    let u = |i: usize| u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]) as f64;
+    Some((u(16), u(20)))
+}
+
+/// Icons the game only puts together when the item is generated: random-build weapons
+/// (variant 1 of each part, guns laid out butt → barrel like `buildweapon.lua`), random
+/// shields (`buildshield.lua`), and codexes (their `icon`).
+fn built_icon(a: &Assets, frames: &mut crate::frames::Frames, item_path: &str, v: &Value) -> Option<String> {
+    if let Some(icon) = v.get("icon").and_then(|x| x.as_str()) {
+        return Some(icon_ref(a, frames, item_path, icon));
+    }
+    let bc = v.get("builderConfig")?.get(0)?;
+    let parts = bc.get("animationParts")?.as_object()?;
+    let part = |k: &str| -> Option<String> {
+        let p = parts.get(k)?;
+        let s = p.get("path").and_then(|x| x.as_str()).or(p.as_str())?;
+        Some(relative_to(item_path, &s.replace("<variant>", "1")))
+    };
+    let names = |k: &str| -> Vec<String> {
+        bc.get(k).and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default()
+    };
+    if v.get("builder").and_then(|x| x.as_str()).is_some_and(|b| b.ends_with("buildshield.lua")) {
+        return Some(icon_ref(a, frames, item_path, &format!("{}:nearidle", part("shield")?)));
+    }
+    let mut x_of = HashMap::new();
+    let mut x = 0.0;
+    for g in names("gunParts") {
+        let (w, _) = png_size(a, &part(&g)?)?;
+        x_of.insert(g, x + w / 2.0);
+        x += w;
+    }
+    let layers: Vec<(String, f64)> = names("iconDrawables")
+        .into_iter()
+        .filter_map(|n| {
+            let p = part(&n).filter(|p| a.exists(p))?;
+            Some((icon_ref(a, frames, item_path, &p), x_of.get(&n).copied().unwrap_or(0.0)))
+        })
+        .collect();
+    match layers.len() {
+        0 => None,
+        1 if layers[0].1 == 0.0 => Some(layers[0].0.clone()),
+        _ => Some(layers.iter().map(|(r, x)| format!("{r}@{x},0")).collect::<Vec<_>>().join("|")),
+    }
+}
+
 pub fn build_items(a: &Assets) -> Vec<ItemInfo> {
     let mut out = BTreeMap::new();
     let mut frames = crate::frames::Frames::default();
@@ -78,8 +151,8 @@ pub fn build_items(a: &Assets) -> Vec<ItemInfo> {
         }
         let icon = match v.get("inventoryIcon") {
             Some(Value::String(s)) => Some(icon_ref(a, &mut frames, &p, s)),
-            Some(Value::Array(arr)) => arr.first().and_then(|x| x.get("image")).and_then(|x| x.as_str()).map(|s| icon_ref(a, &mut frames, &p, s)),
-            _ => None,
+            Some(Value::Array(arr)) => layered_icon(a, &mut frames, &p, arr),
+            _ => built_icon(a, &mut frames, &p, &v),
         };
         out.insert(
             name.clone(),
@@ -88,12 +161,85 @@ pub fn build_items(a: &Assets) -> Vec<ItemInfo> {
                 shortdescription: strip_markup(v.get("shortdescription").and_then(|x| x.as_str()).unwrap_or("")),
                 category: v.get("category").and_then(|x| x.as_str()).unwrap_or("").to_string(),
                 rarity: v.get("rarity").and_then(|x| x.as_str()).unwrap_or("").to_lowercase(),
+                random: v.get("inventoryIcon").is_none() && v.get("builderConfig").is_some(),
+                set: matches!(kind.as_str(), "head" | "chest" | "legs" | "back").then(|| p.rsplit_once('/').map(|x| x.0.to_string())).flatten(),
                 kind,
                 icon,
             },
         );
     }
     out.into_values().collect()
+}
+
+/// Where each microdungeon can turn up: dungeon name → [{planet, layer ("surface" or
+/// "underground"), via ("main" | "secondary" | "minibiome"), biome, distribution}], following
+/// terrestrial_worlds.config: planet type → layers → regions (+ their sub-regions, i.e.
+/// minibiomes) → biomes (all the threat steps up to the planet's highest threat) → the biome's
+/// microdungeon placeables. Surface placeables of a surface-layer biome are "surface";
+/// everything else is in caves.
+fn micro_spawns(a: &Assets, biomes: &[Value]) -> Value {
+    let Ok(tw) = a.json("/terrestrial_worlds.config") else { return json!({}) };
+    let strs = |v: Option<&Value>| -> Vec<String> { v.and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default() };
+    let regions = tw.get("regionTypes").and_then(|x| x.as_object()).cloned().unwrap_or_default();
+    let region_defaults = tw.get("regionDefaults").cloned().unwrap_or(json!({}));
+    // region → biome names usable at threat ≤ max
+    let region_biomes = |rt: &str, max: f64| -> Vec<String> {
+        let Some(r) = regions.get(rt) else { return vec![] };
+        let mut out = Vec::new();
+        for step in r.get("biome").and_then(|x| x.as_array()).into_iter().flatten() {
+            if step.get(0).and_then(|x| x.as_f64()).unwrap_or(0.0) <= max {
+                out.extend(strs(step.get(1)));
+            }
+        }
+        out
+    };
+    let sub_regions = |rt: &str| -> Vec<String> { strs(regions.get(rt).and_then(|r| r.get("subRegion")).or(region_defaults.get("subRegion"))) };
+    // biome name → its microdungeon entries (surface, underground)
+    let mut by_biome: HashMap<String, (&Value, &Value)> = HashMap::new();
+    for b in biomes {
+        if let Some(n) = b.get("name").and_then(|x| x.as_str()) {
+            by_biome.insert(n.to_string(), (&b["surfaceMicro"], &b["undergroundMicro"]));
+        }
+    }
+    let empty = json!({});
+    let default_layers = tw.pointer("/planetDefaults/layers").and_then(|x| x.as_object()).cloned().unwrap_or_default();
+    let mut out: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+    let mut seen = HashSet::new();
+    for (planet, pt) in tw.get("planetTypes").and_then(|x| x.as_object()).into_iter().flatten() {
+        let max = pt.pointer("/threatRange/1").and_then(|x| x.as_f64()).unwrap_or(10.0);
+        let layers = pt.get("layers").and_then(|x| x.as_object()).cloned().unwrap_or_default();
+        let names: BTreeSet<&String> = default_layers.keys().chain(layers.keys()).collect();
+        for layer in names {
+            let mut l = default_layers.get(layer).and_then(|x| x.as_object()).cloned().unwrap_or_default();
+            for (k, v) in layers.get(layer).and_then(|x| x.as_object()).unwrap_or(empty.as_object().unwrap()) {
+                l.insert(k.clone(), v.clone());
+            }
+            if matches!(layer.as_str(), "space" | "atmosphere") {
+                continue;
+            }
+            let mut regs: Vec<(String, &str)> = strs(l.get("primaryRegion")).into_iter().map(|r| (r, "main")).collect();
+            regs.extend(strs(l.get("secondaryRegions")).into_iter().map(|r| (r, "secondary")));
+            let subs: Vec<(String, &str)> = regs.iter().flat_map(|(r, _)| sub_regions(r).into_iter().map(|s| (s, "minibiome"))).collect();
+            regs.extend(subs);
+            for (rt, via) in regs {
+                for biome in region_biomes(&rt, max) {
+                    let Some((surf, under)) = by_biome.get(&biome) else { continue };
+                    for (entries, placed_on_surface) in [(surf, true), (under, false)] {
+                        for e in entries.as_array().into_iter().flatten() {
+                            let where_ = if layer == "surface" && placed_on_surface { "surface" } else { "underground" };
+                            let dist = e.get("distribution").and_then(|x| x.as_str()).unwrap_or("");
+                            for d in strs(e.get("microdungeons")) {
+                                if seen.insert((d.clone(), planet.clone(), where_, via, biome.clone())) {
+                                    out.entry(d).or_default().push(json!({ "planet": planet, "layer": where_, "via": via, "biome": biome, "distribution": dist }));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    json!(out)
 }
 
 fn names_in(a: &Assets, ext: &str, key: &str) -> Vec<String> {
@@ -107,20 +253,91 @@ fn names_in(a: &Assets, ext: &str, key: &str) -> Vec<String> {
     v
 }
 
-pub fn game_index(a: &Assets) -> Value {
-    let mut pools = Map::new();
-    for p in a.list(|p| p.ends_with(".treasurepools")) {
-        if let Ok(Value::Object(m)) = a.json(&p) {
-            for k in m.keys() {
-                pools.insert(k.clone(), json!({ "file": p, "vanilla": a.in_vanilla(&p) }));
+fn entry_item(e: &Value) -> Option<&str> {
+    match e.get("item")? {
+        Value::String(s) => Some(s.as_str()),
+        Value::Array(a) => a.first().and_then(|x| x.as_str()),
+        Value::Object(o) => o.get("name").or(o.get("item")).and_then(|x| x.as_str()),
+        _ => None,
+    }
+}
+
+/// A table's entries in all its versions: (item or nested table, weight; fill counts as 1).
+fn entries(cfg_levels: &Value) -> Vec<(&Value, f64)> {
+    let mut out = Vec::new();
+    for l in cfg_levels.as_array().into_iter().flatten() {
+        let Some(cfg) = l.get(1) else { continue };
+        for e in cfg.get("pool").and_then(|x| x.as_array()).into_iter().flatten() {
+            out.push((e, e.get("weight").and_then(|w| w.as_f64()).unwrap_or(1.0)));
+        }
+        for e in cfg.get("fill").and_then(|x| x.as_array()).into_iter().flatten() {
+            out.push((e, 1.0));
+        }
+    }
+    out
+}
+
+/// Item names that show what a loot table gives, best first. The editor uses the first one with
+/// an icon. Its own entries come before nested tables' (so chests that all nest the same basic
+/// table still look different), and among them items few other tables have, then by weight;
+/// pixels last. `spread[item]` = how many tables list it directly.
+pub fn sample_items(name: &str, all: &Map<String, Value>, spread: &HashMap<String, usize>) -> Vec<String> {
+    let mut cands: Vec<(bool, u32, usize, f64, String)> = Vec::new(); // money, depth, spread, -weight, name
+    let mut seen = HashSet::new();
+    let mut queue = vec![(name.to_string(), 0u32)];
+    while let Some((t, depth)) = queue.pop() {
+        if depth > 4 || !seen.insert(t.clone()) {
+            continue;
+        }
+        let Some(levels) = all.get(&t) else { continue };
+        for (e, w) in entries(levels) {
+            if let Some(n) = entry_item(e) {
+                cands.push((n == "money", depth, spread.get(n).copied().unwrap_or(0), -w, n.to_string()));
+            } else if let Some(p) = e.get("pool").and_then(|x| x.as_str()) {
+                queue.insert(0, (p.to_string(), depth + 1));
             }
         }
+    }
+    cands.sort_by(|a, b| (a.0, a.1, a.2).cmp(&(b.0, b.1, b.2)).then(a.3.total_cmp(&b.3)));
+    let mut out: Vec<String> = Vec::new();
+    for c in cands {
+        if !out.contains(&c.4) {
+            out.push(c.4);
+            if out.len() >= 6 {
+                break;
+            }
+        }
+    }
+    out
+}
+
+pub fn game_index(a: &Assets) -> Value {
+    let mut pools = Map::new();
+    let mut contents = Map::new();
+    for p in a.list(|p| p.ends_with(".treasurepools")) {
+        if let Ok(Value::Object(m)) = a.json(&p) {
+            for (k, v) in m {
+                pools.insert(k.clone(), json!({ "file": p, "vanilla": a.in_vanilla(&p) }));
+                contents.insert(k, v);
+            }
+        }
+    }
+    let mut spread: HashMap<String, usize> = HashMap::new();
+    for levels in contents.values() {
+        let names: HashSet<&str> = entries(levels).iter().filter_map(|(e, _)| entry_item(e)).collect();
+        for n in names {
+            *spread.entry(n.to_string()).or_default() += 1;
+        }
+    }
+    for (k, v) in pools.iter_mut() {
+        v["items"] = json!(sample_items(k, &contents, &spread));
     }
     let mut dungeons = Map::new();
     for p in a.list(|p| p.ends_with(".dungeon")) {
         if let Ok(v) = a.json(&p) {
             if let Some(n) = v.pointer("/metadata/name").and_then(|x| x.as_str()) {
-                dungeons.insert(n.to_string(), json!({ "file": p, "vanilla": a.in_vanilla(&p) }));
+                let parts = v.get("parts").and_then(|x| x.as_array()).map_or(0, |x| x.len());
+                dungeons.insert(n.to_string(), json!({ "file": p, "vanilla": a.in_vanilla(&p), "parts": parts }));
             }
         }
     }
@@ -147,12 +364,14 @@ pub fn game_index(a: &Assets) -> Value {
             "undergroundMicro": micro("undergroundPlaceables"),
         }));
     }
+    let micro_spawns = micro_spawns(a, &biomes);
     let distributions = a.json("/biomes/distributions.config").unwrap_or(Value::Null);
     let species = names_in(a, ".species", "kind");
     json!({
         "pools": pools,
         "dungeons": dungeons,
         "biomes": biomes,
+        "microSpawns": micro_spawns,
         "distributions": distributions,
         "npcTypes": names_in(a, ".npctype", "type"),
         "monsterTypes": names_in(a, ".monstertype", "type"),

@@ -17,6 +17,9 @@ pub struct Pak {
     pub path: PathBuf,
     file: Mutex<File>,
     index: HashMap<String, (u64, u64)>,
+    /// lowercased path → stored path: the game looks assets up ignoring case, and vanilla
+    /// relies on it (`icons.png` for `Icons.png`, `16gbpasty.png` for `16GBpasty.png`, …)
+    lower: HashMap<String, String>,
     pub metadata: serde_json::Map<String, Value>,
 }
 
@@ -50,11 +53,17 @@ impl Pak {
             let len = c.u64()?;
             index.insert(p, (off, len));
         }
-        Ok(Pak { path: path.to_path_buf(), file: Mutex::new(f), index, metadata })
+        let lower = index.keys().map(|k| (k.to_lowercase(), k.clone())).collect();
+        Ok(Pak { path: path.to_path_buf(), file: Mutex::new(f), index, lower, metadata })
+    }
+
+    /// The entry for `path`, matched exactly or else ignoring case.
+    fn entry(&self, path: &str) -> Option<(u64, u64)> {
+        self.index.get(path).or_else(|| self.lower.get(&path.to_lowercase()).and_then(|k| self.index.get(k))).copied()
     }
 
     pub fn contains(&self, path: &str) -> bool {
-        self.index.contains_key(path)
+        self.entry(path).is_some()
     }
 
     pub fn paths(&self) -> impl Iterator<Item = &String> {
@@ -62,7 +71,7 @@ impl Pak {
     }
 
     pub fn read(&self, path: &str) -> Result<Vec<u8>> {
-        let &(off, len) = self.index.get(path).ok_or_else(|| anyhow!("{path} not in pak"))?;
+        let (off, len) = self.entry(path).ok_or_else(|| anyhow!("{path} not in pak"))?;
         let mut f = self.file.lock().unwrap();
         f.seek(SeekFrom::Start(off))?;
         let mut out = vec![0u8; len as usize];

@@ -8,6 +8,7 @@
   import PixelIcon from "../lib/PixelIcon.svelte";
   import type { Obj } from "../lib/types";
   import LootPreview from "./LootPreview.svelte";
+  import TableIcon from "./TableIcon.svelte";
 
   let { md, obj, ondone }: { md: MapDoc; obj: Obj; ondone?: () => void } = $props();
 
@@ -55,7 +56,7 @@
 <div class="assign">
   {#each pools as p, i}
     <div class="row">
-      <PixelIcon name="chest" scale={2} color="var(--gold)" />
+      <TableIcon name={p} own={!!editor.projectPools[p]} />
       <span class="pname" title={p}>{p}</span>
       <button class="small flat" class:on={preview === p && !choosing} title="Show what's in it" onclick={() => {
         choosing = false;

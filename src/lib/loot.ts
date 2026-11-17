@@ -132,6 +132,96 @@ export function itemGroup(i: ItemInfo): ItemGroup {
   return "other";
 }
 
+// ── "random X" picks ──
+/** Vanilla loot tables that stand for "a random X", with a friendly name and an example icon. */
+export const RANDOM_TABLES: { pool: string; label: string; icon: string }[] = [
+  { pool: "commonGun", label: "Common gun", icon: "commonpistol" },
+  { pool: "uncommonGun", label: "Uncommon gun", icon: "uncommonpistol" },
+  { pool: "rareGun", label: "Rare gun", icon: "rarepistol" },
+  { pool: "commonMelee", label: "Common melee weapon", icon: "commonbroadsword" },
+  { pool: "uncommonMelee", label: "Uncommon melee weapon", icon: "uncommonbroadsword" },
+  { pool: "rareMelee", label: "Rare melee weapon", icon: "rarebroadsword" },
+  { pool: "weapon", label: "Any weapon", icon: "rarestaff" },
+  { pool: "uniqueWeapon", label: "Unique weapon", icon: "boomerang" },
+  { pool: "shield", label: "Shield", icon: "commonsmallshield" },
+  { pool: "thrownWeapon", label: "Throwable", icon: "bomb" },
+  { pool: "costume", label: "Costume piece", icon: "ethnichead" },
+  { pool: "spaceCostume", label: "Space costume piece", icon: "industrialcrewhead" },
+  { pool: "instrument", label: "Instrument", icon: "accordion" },
+  { pool: "money", label: "Pixels", icon: "money" },
+  { pool: "ore", label: "Ore", icon: "ironore" },
+  { pool: "richOre", label: "Lots of ore", icon: "goldore" },
+  { pool: "food", label: "Food", icon: "bread" },
+  { pool: "healingItem", label: "Healing item", icon: "salve" },
+  { pool: "stim", label: "Stim", icon: "redstim" },
+  { pool: "seed", label: "Seeds", icon: "wheatseed" },
+  { pool: "produce", label: "Produce", icon: "wheat" },
+  { pool: "augments", label: "EPP augment", icon: "damageaugment1" },
+  { pool: "petcollars", label: "Pet collar", icon: "damagecollar1" },
+  { pool: "tool", label: "Tool (flares, ropes…)", icon: "flare" },
+  { pool: "diggingTool", label: "Digging tool", icon: "copperpickaxe" },
+  { pool: "rarefurniture", label: "Rare furniture", icon: "wavebed" },
+];
+
+// ── what a table "looks like" ──
+/** Item names that show what a loot table gives, best first (project tables read live, game
+ *  tables from the index): entries by weight, fill last, nested tables followed, pixels last. */
+export function tableSampleItems(name: string, depth = 0, seen = new Set<string>()): string[] {
+  if (depth > 4 || seen.has(name)) return [];
+  seen.add(name);
+  const own = editor.projectPools[name];
+  if (!own) return game.index?.pools[name]?.items ?? [];
+  const levels = editor.files[own]?.[name];
+  const cfg = Array.isArray(levels) && levels.length ? levels[levels.length - 1]?.[1] : null;
+  if (!cfg) return [];
+  const entries = [...((cfg.pool ?? []) as any[])].sort((a, b) => (Number(b.weight) || 0) - (Number(a.weight) || 0)).concat(cfg.fill ?? []);
+  // own items first, then nested tables' (like the game index does for vanilla tables)
+  const out: string[] = entries.filter((e) => e?.item !== undefined).map((e) => descName(e.item));
+  for (const e of entries) if (typeof e?.pool === "string" && out.length < 6) out.push(...tableSampleItems(e.pool, depth + 1, seen));
+  return [...new Set(out)].sort((a, b) => Number(a === "money") - Number(b === "money"));
+}
+/** Icon of the first sample item that has one (null: show a plain chest). */
+export function tableIcon(name: string): string | null {
+  for (const n of tableSampleItems(name)) {
+    // blueprints ("icebed-recipe") show the item they unlock
+    const icon = game.itemByName.get(n)?.icon ?? game.itemByName.get(n.replace(/-recipe$/, ""))?.icon;
+    if (icon) return "a:" + icon;
+  }
+  return null;
+}
+
+export interface ArmorSet {
+  folder: string;
+  label: string;
+  pieces: ItemInfo[];
+}
+const PIECE_ORDER: Record<string, number> = { head: 0, chest: 1, legs: 2, back: 3 };
+/** Armor / clothes grouped by the folder they live in (2+ pieces = a set). */
+export function armorSets(items: ItemInfo[]): ArmorSet[] {
+  const by = new Map<string, ItemInfo[]>();
+  for (const i of items) if (i.set) (by.get(i.set) ?? by.set(i.set, []).get(i.set)!).push(i);
+  const out: ArmorSet[] = [];
+  for (const [folder, pieces] of by) {
+    if (pieces.length < 2) continue;
+    pieces.sort((a, b) => (PIECE_ORDER[a.kind] ?? 9) - (PIECE_ORDER[b.kind] ?? 9));
+    out.push({ folder, label: setLabel(folder, pieces), pieces });
+  }
+  return out.sort((a, b) => a.label.localeCompare(b.label));
+}
+/** "Knave's Breastplate" + "Knave's Helm" → "Knave's"; else the most shared word; else the folder. */
+function setLabel(folder: string, pieces: ItemInfo[]): string {
+  const words = pieces.map((p) => (p.shortdescription || p.name).split(/\s+/));
+  const prefix: string[] = [];
+  for (let k = 0; words.every((w) => w[k] !== undefined && w[k] === words[0][k]); k++) prefix.push(words[0][k]);
+  if (prefix.length) return prefix.join(" ");
+  const count = new Map<string, number>();
+  for (const w of words) for (const x of new Set(w)) count.set(x, (count.get(x) ?? 0) + 1);
+  const shared = words.flat().find((x) => (count.get(x) ?? 0) >= 2 && x.length > 2);
+  if (shared) return shared;
+  const f = folder.split("/").pop()!.replace(/^(apex|avian|floran|glitch|human|hylotl|novakid)-/, "");
+  return f.charAt(0).toUpperCase() + f.slice(1);
+}
+
 // ── which tables a container uses ──
 export function paramsOf(o: Obj): Record<string, any> {
   const p = o.properties.parameters;

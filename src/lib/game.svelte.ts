@@ -75,6 +75,10 @@ class Game {
   catalog = $state.raw<Catalog | null>(null);
   objects = $state.raw<Record<string, ObjectInfo>>({});
   items = $state.raw<ItemInfo[]>([]);
+  itemByName = $derived(new Map(this.items.map((i) => [i.name, i])));
+  /** objects / items players only meet in missions or can't get at all (hidden in palettes by default) */
+  hiddenObjects = $state.raw<Set<string>>(new Set());
+  hiddenItems = $state.raw<Set<string>>(new Set());
   index = $state.raw<GameIndex | null>(null);
   brushes = $state.raw<Brush[]>([]);
   loading = $state("");
@@ -104,6 +108,10 @@ class Game {
       // these are only needed by the loot / spawn editors; load in the background
       void api.gameIndex().then((i) => (this.index = i));
       void api.itemDb().then((i) => (this.items = i));
+      void api.hiddenDb().then((h) => {
+        this.hiddenObjects = new Set(h.objects);
+        this.hiddenItems = new Set(h.items);
+      });
     } catch (e) {
       this.error = String(e);
       this.loading = "";

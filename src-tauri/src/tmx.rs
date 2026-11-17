@@ -145,7 +145,7 @@ pub fn tileset_asset_path(source: &str) -> String {
     }
 }
 
-fn decode_layer(l: &Value, n: usize) -> Result<Vec<u32>> {
+pub fn decode_layer(l: &Value, n: usize) -> Result<Vec<u32>> {
     let data = l.get("data").ok_or_else(|| anyhow!("tile layer without data"))?;
     let out: Vec<u32> = if let Some(arr) = data.as_array() {
         arr.iter().map(|x| x.as_u64().unwrap_or(0) as u32).collect()

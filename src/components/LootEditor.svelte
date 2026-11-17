@@ -5,9 +5,10 @@
   import { api } from "../lib/api";
   import { editor } from "../lib/editor.svelte";
   import { game } from "../lib/game.svelte";
-  import { chanceIn, descCount, descName, GROUP_LABEL, ITEM_GROUPS, itemGroup, poolNameTaken, roundsOf, TIERS, versionFor, withCount, type ItemGroup } from "../lib/loot";
+  import { armorSets, chanceIn, descCount, descName, GROUP_LABEL, ITEM_GROUPS, itemGroup, loadTable, poolNameTaken, RANDOM_TABLES, roundsOf, TIERS, versionFor, withCount, type ArmorSet, type ItemGroup } from "../lib/loot";
   import PixelIcon from "../lib/PixelIcon.svelte";
   import type { ItemInfo } from "../lib/types";
+  import TableIcon from "./TableIcon.svelte";
   import Thumb from "./Thumb.svelte";
   import VirtualGrid from "./VirtualGrid.svelte";
 
@@ -65,14 +66,51 @@
     while (poolNameTaken(n) || file[n]) n = `${base}${i++}`;
     return n;
   }
+  const modPrefix = () => String(editor.project?.metadata?.name ?? "my").replace(/\W+/g, "").toLowerCase() || "my";
   function addPool() {
-    const prefix = String(editor.project?.metadata?.name ?? "my").replace(/\W+/g, "").toLowerCase() || "my";
-    const n = uniqueName(`${prefix}Loot`);
+    const n = uniqueName(`${modPrefix()}Loot`);
     file[n] = [[0, { fill: [], pool: [], poolRounds: [[0.5, 1], [0.5, 2]] }]];
     selected = n;
     tier = 1;
     touch();
   }
+
+  // ── new table from a template (any project or game table) ──
+  let templOpen = $state(false);
+  let templQ = $state("");
+  const templates = $derived.by(() => {
+    const s = templQ.trim().toLowerCase();
+    const all = [...Object.keys(editor.projectPools), ...Object.keys(game.index?.pools ?? {}).filter((n) => !editor.projectPools[n]).sort()];
+    return all.filter((n) => !s || n.toLowerCase().includes(s)).slice(0, 200);
+  });
+  const fileOfPool = (n: string) => (editor.projectPools[n] ? "This mod" : (game.index?.pools[n]?.file ?? "").split("/").pop()?.replace(/\.treasurepools$/, "") ?? "");
+  /** the template list under one header per source file, this mod first */
+  const templateGroups = $derived.by(() => {
+    const m = new Map<string, string[]>();
+    for (const n of templates) {
+      const f = fileOfPool(n);
+      (m.get(f) ?? m.set(f, []).get(f)!).push(n);
+    }
+    return [...m].sort(([a], [b]) => (a === "This mod" ? -1 : b === "This mod" ? 1 : a.localeCompare(b)));
+  });
+  /** camelCase name split so it can wrap between words */
+  const nameParts = (n: string) => n.split(/(?<=[a-z0-9])(?=[A-Z])/);
+  async function fromTemplate(src: string) {
+    const levels = await loadTable(src);
+    if (!levels) {
+      editor.toast(`Couldn't read the loot table ${src}`, "error");
+      return;
+    }
+    const n = uniqueName(`${modPrefix()}${src.charAt(0).toUpperCase()}${src.slice(1)}`);
+    file[n] = JSON.parse(JSON.stringify(levels));
+    selected = n;
+    tier = 1;
+    templOpen = false;
+    templQ = "";
+    touch();
+    editor.toast(`Made ${n}, a copy of ${src}`, "good");
+  }
+
   function renamePool(old: string, n: string) {
     n = n.trim();
     if (!n || n === old) return;
@@ -148,7 +186,7 @@
   // ── item palette ──
   type Target = "fill" | "pool";
   let target = $state<Target>("pool");
-  let group = $state<ItemGroup | "tables">("weapons");
+  let group = $state<ItemGroup | "tables" | "random">("weapons");
   let q = $state("");
   const grouped = $derived.by(() => {
     const m = new Map<ItemGroup, ItemInfo[]>(ITEM_GROUPS.map((g) => [g, []]));
@@ -162,10 +200,11 @@
   const RANK: Record<string, number> = { common: 0, uncommon: 1, rare: 2, legendary: 3, essential: 4 };
   const label = (i: ItemInfo) => i.shortdescription || i.name;
   const shownItems = $derived.by(() => {
-    if (group === "tables") return [];
+    if (group === "tables" || group === "random") return [];
     const s = q.trim().toLowerCase();
     const src = s ? game.items.filter((i) => i.icon) : (grouped.get(group) ?? []);
-    const list = s ? src.filter((i) => `${i.shortdescription} ${i.name} ${i.category}`.toLowerCase().includes(s)) : [...src];
+    const matched = s ? src.filter((i) => `${i.shortdescription} ${i.name} ${i.category}`.toLowerCase().includes(s)) : src;
+    const list = editor.showHidden ? [...matched] : matched.filter((i) => !game.hiddenItems.has(i.name));
     const dir = descending ? -1 : 1;
     list.sort((a, b) =>
       sortBy === "rarity"
@@ -179,11 +218,17 @@
   let tip = $state<{ text: string; sub: string; x: number; y: number } | null>(null);
   $effect(() => {
     void shownItems;
+    void sim;
     tip = null;
   });
+  function showTipFor(e: PointerEvent, name: string, count: number) {
+    const i = itemByName.get(name);
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    tip = { text: labelOf(name) + (count > 1 ? ` ×${count}` : ""), sub: [i?.rarity, name].filter(Boolean).join(" · "), x: r.left + r.width / 2, y: r.top - 4 };
+  }
   function showTip(e: PointerEvent, i: ItemInfo) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    tip = { text: label(i), sub: [i.rarity, i.name].filter(Boolean).join(" · "), x: r.left + r.width / 2, y: r.top - 4 };
+    tip = { text: label(i), sub: [i.rarity, i.name, game.hiddenItems.has(i.name) ? "not obtainable" : ""].filter(Boolean).join(" · "), x: r.left + r.width / 2, y: r.top - 4 };
   }
   const shownTables = $derived.by(() => {
     const s = q.trim().toLowerCase();
@@ -203,6 +248,42 @@
     }
     touch();
   }
+  // ── "random X" group ──
+  const rq = $derived(group === "random" ? q.trim().toLowerCase() : "");
+  const randomTables = $derived(RANDOM_TABLES.filter((t) => game.index?.pools[t.pool] && (!rq || `${t.label} ${t.pool}`.toLowerCase().includes(rq))));
+  const randomItems = $derived(
+    game.items
+      .filter((i) => i.random && i.icon && (editor.showHidden || !game.hiddenItems.has(i.name)))
+      .filter((i) => !rq || `${i.shortdescription} ${i.name}`.toLowerCase().includes(rq))
+      .sort((a, b) => (RANK[a.rarity] ?? -1) - (RANK[b.rarity] ?? -1) || label(a).localeCompare(label(b))),
+  );
+  const sets = $derived(armorSets(editor.showHidden ? game.items : game.items.filter((i) => !game.hiddenItems.has(i.name))));
+  const shownSets = $derived(sets.filter((st) => !rq || `${st.label} ${st.pieces.map((p) => p.shortdescription).join(" ")}`.toLowerCase().includes(rq)));
+  /** A small helper table "one random piece of this set" (reused if the mod already has it), added to this table. */
+  function addSetPick(st: ArmorSet) {
+    if (!cfg) return;
+    const want = st.pieces.map((p) => p.name).sort().join(",");
+    let n = Object.keys(editor.projectPools).find((k) => {
+      const lv = editor.files[editor.projectPools[k]]?.[k];
+      const pool = Array.isArray(lv) && lv.length === 1 ? lv[0][1]?.pool : null;
+      return Array.isArray(pool) && pool.map((e: any) => descName(e.item)).sort().join(",") === want;
+    });
+    if (!n) {
+      n = uniqueName(`${modPrefix()}${st.label.replace(/\W+/g, "")}Set`);
+      file[n] = [[0, { pool: st.pieces.map((p) => ({ weight: 1, item: [p.name, 1] })), poolRounds: 1 }]];
+      editor.toast(`Made the loot table ${n}: one random piece of the ${st.label} set`, "good");
+    }
+    addTable(n);
+  }
+  function showSetTip(e: PointerEvent, st: ArmorSet) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    tip = { text: `One random piece: ${st.label}`, sub: st.pieces.map((p) => label(p)).join(" · "), x: r.left + r.width / 2, y: r.top - 4 };
+  }
+  function showTableTip(e: PointerEvent, t: { pool: string; label: string }) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    tip = { text: `A random ${t.label.toLowerCase()}`, sub: `the game's ${t.pool} table, changes with planet tier`, x: r.left + r.width / 2, y: r.top - 4 };
+  }
+
   function addTable(n: string) {
     if (!cfg) return;
     (cfg[target] ??= []).push(target === "pool" ? { weight: 1, pool: n } : { pool: n });
@@ -235,9 +316,28 @@
       <button class="pool" class:on={selected === n} onclick={() => {
         selected = n;
         tier = 1;
-      }} title={n}>{n}</button>
+      }} title={n}><TableIcon name={n} size={20} own /> <span class="pooltxt">{n}</span></button>
     {/each}
     <button class="gold small" onclick={addPool}><PixelIcon name="plus" scale={2} /> New loot table</button>
+    <button class="small" class:gold={templOpen} onclick={() => (templOpen = !templOpen)} title="Start from a copy of one of your tables or one of the game's">New from a template…</button>
+    {#if templOpen}
+      <div class="templ">
+        <input type="search" placeholder="Find a table to copy…" bind:value={templQ} />
+        <div class="tlist">
+          {#each templateGroups as [f, ns] (f)}
+            <div class="tgroup label">{f}</div>
+            {#each ns as n (n)}
+              <button class="tablebtn" onclick={() => fromTemplate(n)}>
+                <TableIcon name={n} own={!!editor.projectPools[n]} />
+                <span class="tname">{#each nameParts(n) as part, k}{#if k}<wbr />{/if}{part}{/each}</span>
+              </button>
+            {/each}
+          {:else}
+            <p class="muted small">No table matches.</p>
+          {/each}
+        </div>
+      </div>
+    {/if}
     <p class="muted small">Give a container a table by right-clicking or double-clicking it on the map. Table names are shared with the game and all other mods, so SME prefixes them with your mod's name.</p>
   </aside>
 
@@ -294,7 +394,7 @@
         {#each cfg.fill ?? [] as f, i}
           <div class="entry">
             {#if f.pool !== undefined}
-              <PixelIcon name="chest" scale={2} color="var(--gold)" />
+              <TableIcon name={f.pool} size={28} own={!!editor.projectPools[f.pool]} />
               <span class="ename">everything from <b>{f.pool}</b></span>
             {:else}
               <Thumb image={iconOf(descName(f.item))} size={28} />
@@ -331,7 +431,7 @@
           {@const w = Number(p.weight) || 0}
           <div class="entry">
             {#if p.pool !== undefined}
-              <PixelIcon name="chest" scale={2} color="var(--gold)" />
+              <TableIcon name={p.pool} size={28} own={!!editor.projectPools[p.pool]} />
               <span class="ename">one roll of <b>{p.pool}</b></span>
             {:else}
               <Thumb image={iconOf(descName(p.item))} size={28} />
@@ -404,7 +504,7 @@
             {#each sim as chest}
               <div class="chest">
                 {#each chest as [n, c]}
-                  <span class="it" title="{labelOf(n)} ×{c}">
+                  <span class="it" role="img" aria-label="{labelOf(n)} ×{c}" onpointerenter={(e) => showTipFor(e, n, c)} onpointerleave={() => (tip = null)}>
                     <Thumb image={iconOf(n)} size={24} />
                     {#if c > 1}<span class="cnt">{c}</span>{/if}
                   </span>
@@ -426,7 +526,7 @@
           <button class="small" class:gold={target === "pool"} onclick={() => (target = "pool")}>Random</button>
         </div>
       </div>
-      <input type="search" placeholder="Search all items…" bind:value={q} />
+      <input type="search" placeholder={group === "random" ? "Search random picks…" : "Search all items…"} bind:value={q} />
       <div class="sortrow">
         <span class="muted small">Sort by</span>
         <select bind:value={sortBy}>
@@ -437,6 +537,10 @@
           {#if sortBy === "name"}{descending ? "Z → A" : "A → Z"}{:else}{descending ? "Rarest first" : "Commonest first"}{/if}
         </button>
       </div>
+      <label class="showhid small" title="Items players can't normally get: NPC-only weapons, quest and mission items, unused leftovers">
+        <input type="checkbox" checked={editor.showHidden} onchange={(e) => editor.setShowHidden((e.currentTarget as HTMLInputElement).checked)} />
+        Show items players can't get
+      </label>
       <div class="groups">
         {#each ITEM_GROUPS as g}
           <button class="small" class:gold={group === g && !q} onclick={() => {
@@ -444,13 +548,60 @@
             q = "";
           }}>{GROUP_LABEL[g]}</button>
         {/each}
+        <button class="small" class:gold={group === "random"} onclick={() => {
+          group = "random";
+          q = "";
+        }} title="Random weapons, random costume pieces, one piece of an armor set…">Random</button>
         <button class="small" class:gold={group === "tables"} onclick={() => (group = "tables")} title="Put a whole other loot table in (e.g. the game's 'money' or 'weapon' tables)">Other loot tables</button>
       </div>
-      {#if group === "tables"}
+      {#if group === "random"}
+        <div class="randoms">
+          {#if randomTables.length}
+            <div class="label rh">From the game's lists <span class="muted small">(picks get better on harder planets)</span></div>
+            <div class="rtables">
+              {#each randomTables as t (t.pool)}
+                <button class="rtable" class:has={inTable.has("pool:" + t.pool)} onclick={() => addTable(t.pool)} onpointerenter={(e) => showTableTip(e, t)} onpointerleave={() => (tip = null)}>
+                  <Thumb image={iconOf(t.icon)} size={24} />
+                  <span>{t.label}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+          {#if randomItems.length}
+            <div class="label rh">Random-build weapons & shields <span class="muted small">(parts and stats rolled on drop)</span></div>
+            <div class="rgrid">
+              {#each randomItems as i (i.name)}
+                <button
+                  class="icell"
+                  class:has={inTable.has(i.name)}
+                  class:hid={game.hiddenItems.has(i.name)}
+                  style:--rc={rarityColor[i.rarity] ?? "#555"}
+                  onclick={() => addItem(i)}
+                  onpointerenter={(e) => showTip(e, i)}
+                  onpointerleave={() => (tip = null)}
+                >
+                  <Thumb image={"a:" + i.icon} size={32} />
+                </button>
+              {/each}
+            </div>
+          {/if}
+          {#if shownSets.length}
+            <div class="label rh">One random piece of a set</div>
+            <div class="rgrid">
+              {#each shownSets as st (st.folder)}
+                <button class="icell setcell" onclick={() => addSetPick(st)} onpointerenter={(e) => showSetTip(e, st)} onpointerleave={() => (tip = null)}>
+                  {#each st.pieces.slice(0, 3) as p (p.name)}<Thumb image={p.icon ? "a:" + p.icon : null} size={16} />{/each}
+                </button>
+              {/each}
+            </div>
+          {/if}
+          {#if !randomTables.length && !randomItems.length && !shownSets.length}<p class="muted small pad">Nothing found.</p>{/if}
+        </div>
+      {:else if group === "tables"}
         <div class="tables">
           {#each shownTables as n}
             <button class="tablebtn" class:has={inTable.has("pool:" + n)} onclick={() => addTable(n)}>
-              <PixelIcon name="chest" scale={2} color={editor.projectPools[n] ? "var(--gold)" : "var(--muted)"} /> {n}
+              <TableIcon name={n} own={!!editor.projectPools[n]} /> {n}
             </button>
           {/each}
         </div>
@@ -460,6 +611,7 @@
             <button
               class="icell"
               class:has={inTable.has(i.name)}
+              class:hid={game.hiddenItems.has(i.name)}
               style:--rc={rarityColor[i.rarity] ?? "#555"}
               onclick={() => addItem(i)}
               onpointerenter={(e) => showTip(e, i)}
@@ -501,11 +653,15 @@
   }
   .pool {
     justify-content: flex-start;
+    gap: 6px;
+    text-align: left;
+    min-width: 0;
+  }
+  .pooltxt {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    display: block;
-    text-align: left;
+    min-width: 0;
   }
   .pool.on {
     background: var(--btn-gold-fill);
@@ -668,6 +824,17 @@
     align-items: center;
     padding: 0 8px;
   }
+  .showhid {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    color: var(--muted);
+  }
+  .icell.hid {
+    border-style: dashed;
+    border-color: #555;
+  }
   .sortrow select {
     flex: 1;
   }
@@ -701,6 +868,86 @@
   .icell.has,
   .tablebtn.has {
     background: #3a3000;
+  }
+  .templ {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 0;
+  }
+  .tlist {
+    max-height: 320px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.4);
+  }
+  .tlist .tablebtn {
+    gap: 6px;
+    min-width: 0;
+    align-items: flex-start;
+    text-align: left;
+    white-space: normal;
+  }
+  .tlist .tablebtn :global(svg),
+  .tlist .tablebtn :global(canvas) {
+    flex: none;
+  }
+  .tname {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+  }
+  .tgroup {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 6px 6px 2px;
+    background: #121212;
+    border-bottom: 1px solid #2a2a2a;
+  }
+  .randoms {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .rh {
+    margin-top: 4px;
+  }
+  .rtables {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+  }
+  .rtable {
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 3px 6px;
+    font-size: 13px;
+    text-align: left;
+    white-space: normal;
+    min-width: 0;
+  }
+  .rtable.has {
+    background: #3a3000;
+  }
+  .rgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 44px);
+    grid-auto-rows: 44px;
+    gap: 2px;
+  }
+  .setcell {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: center;
+    justify-content: center;
+    gap: 0;
+    box-shadow: none;
   }
   .tables {
     flex: 1;

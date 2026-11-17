@@ -125,6 +125,10 @@ export interface ItemInfo {
   rarity: string;
   kind: string;
   icon: string | null;
+  /** built with random parts / stats when it drops (random-build weapons and shields) */
+  random: boolean;
+  /** armor and clothes: the folder of the set this piece belongs to */
+  set: string | null;
 }
 
 export interface FileEntry {
@@ -156,10 +160,24 @@ export interface BiomeInfo {
   undergroundMicro: any[];
 }
 
+export interface SpawnSite {
+  /** planet type, e.g. "tundra" */
+  planet: string;
+  layer: "surface" | "underground";
+  /** the planet's main biome, a secondary biome, or a minibiome patch */
+  via: "main" | "secondary" | "minibiome";
+  biome: string;
+  /** `/biomes/distributions.config:<name>` */
+  distribution: string;
+}
+
 export interface GameIndex {
-  pools: Record<string, { file: string; vanilla: boolean }>;
-  dungeons: Record<string, { file: string; vanilla: boolean }>;
+  /** `items`: names that show what the table gives, best first (use the first with an icon) */
+  pools: Record<string, { file: string; vanilla: boolean; items: string[] }>;
+  dungeons: Record<string, { file: string; vanilla: boolean; parts: number }>;
   biomes: BiomeInfo[];
+  /** microdungeon name → where it can spawn (see `micro_spawns` in treasure.rs) */
+  microSpawns: Record<string, SpawnSite[]>;
   distributions: Record<string, any>;
   npcTypes: string[];
   monsterTypes: string[];
