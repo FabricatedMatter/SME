@@ -3,6 +3,7 @@
   import { game, type Brush, type BrushKind } from "../lib/game.svelte";
   import PixelIcon from "../lib/PixelIcon.svelte";
   import Thumb from "./Thumb.svelte";
+  import VirtualGrid from "./VirtualGrid.svelte";
 
   type Tab = "fav" | "material" | "platform" | "object" | "liquid" | "marker" | "spawn";
   const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -19,11 +20,6 @@
   let query = $state("");
   let facetKind = $state("category");
   let facet = $state("");
-  // virtualised grid: only the rows in view are in the DOM
-  let gridEl = $state<HTMLDivElement>();
-  let scrollTop = $state(0);
-  let viewW = $state(300);
-  let viewH = $state(400);
 
   const facetsOf = $derived.by(() => {
     const out: Record<string, Set<string>> = { category: new Set(), race: new Set(), type: new Set(), colony: new Set() };
@@ -55,22 +51,9 @@
     return filtered;
   });
 
-  $effect(() => {
-    void tab;
-    void query;
-    void facet;
-    if (gridEl) gridEl.scrollTop = 0;
-    scrollTop = 0;
-  });
-
   const favSet = $derived(new Set(editor.favorites));
   const cell = $derived(tab === "object" ? 52 : 38); // px per cell incl. gap
   const thumb = $derived(tab === "object" ? 40 : 28);
-  const cols = $derived(Math.max(1, Math.floor((viewW - 12) / cell)));
-  const rows = $derived(Math.ceil(list.length / cols));
-  const firstRow = $derived(Math.max(0, Math.floor(scrollTop / cell) - 2));
-  const lastRow = $derived(Math.min(rows, Math.ceil((scrollTop + viewH) / cell) + 2));
-  const visible = $derived(list.slice(firstRow * cols, lastRow * cols));
 
   // ── spawn brushes ──
   type SpawnKind = "npc" | "monster" | "stagehand" | "item" | "liquid" | "custom";
@@ -202,16 +185,8 @@
         {/each}
       </div>
     {:else}
-      <div
-        class="grid"
-        bind:this={gridEl}
-        bind:clientWidth={viewW}
-        bind:clientHeight={viewH}
-        onscroll={(e) => (scrollTop = (e.currentTarget as HTMLDivElement).scrollTop)}
-      >
-        <div class="spacer" style:height="{rows * cell}px">
-          <div class="cells" style:top="{firstRow * cell}px" style:grid-template-columns="repeat({cols}, {cell - 2}px)" style:grid-auto-rows="{cell - 2}px">
-            {#each visible as b (b.key)}
+      <VirtualGrid items={list} {cell} key={(b) => b.key} resetOn={`${tab}|${query}|${facet}`}>
+        {#snippet children(b)}
               <button
                 class="cell"
                 class:on={editor.brush?.key === b.key}
@@ -225,10 +200,8 @@
               >
                 <Thumb image={b.image} size={thumb} />
               </button>
-            {/each}
-          </div>
-        </div>
-      </div>
+        {/snippet}
+      </VirtualGrid>
       {#if !list.length}<p class="muted small pad">Nothing found.</p>{/if}
     {/if}
   {/if}
@@ -282,22 +255,6 @@
   .row {
     display: flex;
     gap: 4px;
-  }
-  .grid {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 4px 6px;
-  }
-  .spacer {
-    position: relative;
-  }
-  .cells {
-    position: absolute;
-    left: 0;
-    right: 0;
-    display: grid;
-    gap: 2px;
   }
   .cell {
     padding: 2px;

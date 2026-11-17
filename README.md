@@ -23,9 +23,12 @@ A dedicated editor for Starbound (micro)dungeons, built to replace the generic
   placed as overlays so they don't replace blocks.
 - **NPCs, monsters, stagehands and items** are drawn as spawn areas from a form.
 - **Dungeon editor.** Metadata, parts, anchor parts, chances, threat levels and part rules.
-- **Loot editor.** Treasure pools with level tiers, fill and weighted entries, rounds and an
-  item picker with icons; "open 12 chests" rolls the pool the way the game does. Chests get
-  a loot picker in the inspector.
+- **Loot without the JSON.** Right-click or double-click a chest (or any container) on the
+  map to give it a loot table or create a new one. The loot tab has an item palette with
+  icons: click items to put them "always in the container" or into the "random picks" with
+  an amount and how common they are (shown as the % chance to find them). Different loot for
+  dangerous planets is set per planet tier (Iron, Tungsten, Titanium… = the game's threat
+  levels), and "open 12 containers" rolls the table the way the game does.
 - **Spawn rules instead of hand-written patches.** Tick biomes (planet types or cave
   layers), pick placement and rarity; SME writes the `.biome.patch` files. Microdungeons
   need no Lua.

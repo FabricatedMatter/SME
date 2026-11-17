@@ -16,7 +16,7 @@ export type View =
   | { kind: "mod" }
   | { kind: "dungeon"; path: string }
   | { kind: "map"; path: string; dungeon?: string }
-  | { kind: "loot"; path: string }
+  | { kind: "loot"; path: string; pool?: string; back?: { path: string; dungeon?: string } }
   | { kind: "spawn" }
   | { kind: "test" };
 

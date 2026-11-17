@@ -6,6 +6,8 @@
   import { GROUPS, MapDoc, type Rect } from "../lib/mapdoc.svelte";
   import { MapRenderer } from "../lib/render/mapRenderer";
   import type { Obj, TileRef } from "../lib/types";
+  import { objectNameOf } from "../lib/loot";
+  import ObjectMenu from "./ObjectMenu.svelte";
 
   let { md }: { md: MapDoc } = $props();
 
@@ -19,7 +21,7 @@
 
   // drag state
   type Drag =
-    | { kind: "pan"; sx: number; sy: number; px: number; py: number }
+    | { kind: "pan"; sx: number; sy: number; px: number; py: number; button: number }
     | { kind: "paint"; last: { x: number; y: number }; idx: number; layer: "front" | "back" }
     | { kind: "shape"; tool: "line" | "rect"; start: { x: number; y: number } }
     | { kind: "move"; start: { x: number; y: number }; orig: Map<number, [number, number]>; moved: boolean }
@@ -88,6 +90,13 @@
     const anchor = isAnchorBrush(b);
     const props = b.props;
     const pos = MapDoc.placeAt(props, t.x, t.y);
+    // clicking an identical object at the same spot (e.g. a double-click) selects it instead
+    const tile = md.intern(b.ref);
+    const same = md.allObjects().find((e) => e.obj.tile === tile && e.obj.x === pos.x && e.obj.y === pos.y);
+    if (same) {
+      if (!anchor) editor.selected = [same.obj.id];
+      return;
+    }
     const img = b.image ? getImage(b.image) : null;
     const w = img ? img.width : 8,
       h = img ? img.height : 8;
@@ -157,7 +166,7 @@
         finishWire();
         return;
       }
-      drag = { kind: "pan", sx: ev.clientX, sy: ev.clientY, px: pan.x, py: pan.y };
+      drag = { kind: "pan", sx: ev.clientX, sy: ev.clientY, px: pan.x, py: pan.y, button: ev.button };
       return;
     }
     if (ev.button !== 0) return;
@@ -290,11 +299,30 @@
     }
   }
 
+  // ── object menu (right-click without dragging, or double-click a container) ──
+  let menu = $state<{ id: number; x: number; y: number } | null>(null);
+  function objectUnder(): Obj | undefined {
+    const hits = md.objectsAt(hoverPx.x, hoverPx.y, objSize);
+    return (hits.find((h) => h.obj.tile && !renderer.isMarkerObj(h.obj)) ?? hits[0])?.obj;
+  }
+  function openMenu(ev: MouseEvent, containersOnly: boolean) {
+    toTile(ev);
+    const o = objectUnder();
+    if (!o) return false;
+    if (containersOnly && !game.objects[objectNameOf(md, o)]?.container) return false;
+    menu = { id: o.id, x: ev.clientX + 4, y: ev.clientY + 4 };
+    return true;
+  }
+
   function onUp(ev: PointerEvent) {
     const t = toTile(ev);
     const d = drag;
     drag = null;
     if (!d) return;
+    if (d.kind === "pan" && d.button === 2 && Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 5) {
+      openMenu(ev, false);
+      return;
+    }
     if (d.kind === "paint" || d.kind === "eraseobj") md.commit();
     else if (d.kind === "move" && d.moved) md.commit();
     else if (d.kind === "shape") {
@@ -614,7 +642,14 @@
     onpointerleave={() => (hover = null)}
     onwheel={onWheel}
     oncontextmenu={(e) => e.preventDefault()}
+    ondblclick={(e) => {
+      // only tools whose clicks don't paint blocks (right-click works with every tool)
+      const t = editor.tool;
+      const ok = t === "select" || t === "pick" || (t === "pencil" && (editor.brush?.kind === "object" || editor.layer === "objects"));
+      if (ok) openMenu(e, t !== "select");
+    }}
   ></canvas>
+  {#if menu}<ObjectMenu {md} id={menu.id} x={menu.x} y={menu.y} onclose={() => (menu = null)} />{/if}
   {#if hover}
     <div class="coords">
       x {hover.x} · y {hover.y} <span class="muted">(world y {md.height - 1 - hover.y})</span> · {Math.round(zoom * 100)}%

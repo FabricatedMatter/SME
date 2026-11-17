@@ -5,6 +5,7 @@
   import { MapRenderer } from "../lib/render/mapRenderer";
   import type { Obj, ObjGroup } from "../lib/types";
   import PixelIcon from "../lib/PixelIcon.svelte";
+  import LootAssign from "./LootAssign.svelte";
   import Thumb from "./Thumb.svelte";
 
   let { md }: { md: MapDoc } = $props();
@@ -81,29 +82,11 @@
     }
   }
 
-  // ── chest loot ──
-  const pools = $derived(one ? ((paramsObj(one.obj).treasurePools as string[] | undefined) ?? []) : []);
-  let newPool = $state("");
-  const allPools = $derived([...Object.keys(editor.projectPools), ...Object.keys(game.index?.pools ?? {})]);
-
-  function addPool() {
-    if (!one || !newPool.trim()) return;
-    const p = paramsObj(one.obj);
-    p.treasurePools = [...(p.treasurePools ?? []), newPool.trim()];
-    setParams(one.obj, p);
-    newPool = "";
-  }
-  function removePool(i: number) {
-    if (!one) return;
-    const p = paramsObj(one.obj);
-    p.treasurePools = (p.treasurePools ?? []).filter((_: string, j: number) => j !== i);
-    if (!p.treasurePools.length) delete p.treasurePools;
-    setParams(one.obj, p);
-  }
-  function openPool(name: string) {
-    const f = editor.projectPools[name];
-    if (f) editor.view = { kind: "loot", path: f };
-  }
+  // keep the JSON view in sync when loot is changed elsewhere (menu, loot assign)
+  $effect(() => {
+    void md.rev;
+    if (one && !(document.activeElement instanceof HTMLTextAreaElement)) paramsText = paramsPretty(one.obj);
+  });
 
   // ── raw properties ──
   let newKey = $state("");
@@ -202,27 +185,8 @@
     {#if info?.container}
       <div class="section">
         <div class="label"><PixelIcon name="chest" scale={2} color="var(--gold)" /> Loot ({info.slot_count} slots)</div>
-        {#if pools.length}
-          <p class="muted small">The chest rolls one of these pools when the world generates.</p>
-          {#each pools as p, i}
-            <div class="pool">
-              {#if editor.projectPools[p]}
-                <button class="link" onclick={() => openPool(p)}>{p}</button>
-              {:else}
-                <span class:bad={!game.index?.pools[p]}>{p}</span>
-                {#if game.index?.pools[p]}<span class="muted small">vanilla</span>{:else}<span class="bad small">unknown</span>{/if}
-              {/if}
-              <button class="small flat" title="Remove" onclick={() => removePool(i)}><PixelIcon name="x" scale={2} /></button>
-            </div>
-          {/each}
-        {:else}
-          <p class="muted small">No pool set: the chest uses its default loot (often empty).</p>
-        {/if}
-        <div class="row">
-          <input list="dl-pools" placeholder="Add a treasure pool…" bind:value={newPool} onkeydown={(e) => e.key === "Enter" && addPool()} />
-          <button class="small gold" onclick={addPool}>Add</button>
-        </div>
-        <datalist id="dl-pools">{#each allPools as p}<option value={p}></option>{/each}</datalist>
+        <LootAssign {md} obj={o} />
+        <p class="muted small">Tip: right-click or double-click a container on the map for the same options.</p>
       </div>
     {/if}
 
@@ -337,14 +301,6 @@
     display: flex;
     gap: 4px;
     align-items: center;
-    flex: 1;
-  }
-  .pool {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-  .pool > :first-child {
     flex: 1;
   }
   .prop {
